@@ -19,6 +19,10 @@
     overflow:hidden;user-select:none;box-shadow:0 0 80px rgba(0,0,0,.6) inset;}
   #bg, #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
   #stage.placing #cv{cursor:crosshair;}
+  /* portrait phones: rotate the whole game to landscape so it fills the screen */
+  @media (orientation:portrait){
+    #stage{width:min(100vh,177.78vw);height:min(56.25vh,100vw);transform:rotate(90deg);flex:none;}
+  }
 
   /* ---------- top bar ---------- */
   #topbar{position:absolute;top:10px;left:12px;right:12px;display:flex;
@@ -930,8 +934,13 @@ function showPanel(html){ document.getElementById('panel').innerHTML = html; doc
 function hidePanel(){ document.getElementById('overlay').classList.add('hide'); }
 
 // ---------- input ----------
+function isPortrait(){ return window.matchMedia('(orientation:portrait)').matches; }
 function evtPos(e){
   const r = cv.getBoundingClientRect();
+  if (isPortrait()){ // canvas is rotated 90° clockwise; invert the mapping
+    const u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height;
+    return { x: v * W, y: (1 - u) * H };
+  }
   return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
 }
 cv.addEventListener('pointermove', e => { const p = evtPos(e); mouse.x = p.x; mouse.y = p.y; mouse.in = true; });
@@ -1001,12 +1010,13 @@ function refreshPop(){
   document.getElementById('sellBtn').textContent = 'SELL +' + Math.floor(t.spent * .7);
 }
 function positionPop(t){
-  const r = cv.getBoundingClientRect(), sc = r.width / W;
+  // use layout (untransformed) size so this works under the portrait rotation too
+  const lw = cv.offsetWidth, lh = cv.offsetHeight, sc = lw / W;
   let x = t.x * sc + 30, y = t.y * sc - 20;
   pop.style.left = '0px'; pop.style.top = '0px';
   const pw = pop.offsetWidth || 180, ph = pop.offsetHeight || 150;
-  if (x + pw > r.width - 8) x = t.x * sc - pw - 30;
-  y = clamp(y, 54, r.height - ph - 100);
+  if (x + pw > lw - 8) x = t.x * sc - pw - 30;
+  y = clamp(y, 54, lh - ph - 100);
   pop.style.left = x + 'px'; pop.style.top = y + 'px';
 }
 function closePop(){ selTower = null; pop.classList.remove('show'); }
