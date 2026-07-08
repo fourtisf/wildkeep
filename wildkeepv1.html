@@ -154,6 +154,13 @@
   .score{font-size:clamp(13px,2vw,16px);color:#cfd8c8;margin:4px 0 22px;line-height:1.8;}
   .brandmark{width:clamp(96px,15vw,132px);height:auto;margin:0 auto 6px;display:block;
     filter:drop-shadow(0 6px 16px rgba(240,192,90,.28));}
+  .social{margin-top:14px;display:flex;justify-content:center;}
+  .xbtn{display:inline-flex;align-items:center;gap:9px;text-decoration:none;
+    color:var(--txt);background:var(--glass);border:1px solid var(--line);border-radius:12px;
+    padding:9px 18px;font-weight:800;font-size:clamp(12px,1.5vw,14px);letter-spacing:.05em;
+    transition:transform .12s, filter .12s, border-color .12s;box-shadow:0 4px 14px rgba(0,0,0,.35);}
+  .xbtn:hover{filter:brightness(1.18);transform:translateY(-1px);border-color:var(--gold);}
+  .xbtn svg{width:16px;height:16px;fill:var(--gold);flex:none;}
 </style>
 </head>
 <body>
@@ -1780,7 +1787,10 @@ showPanel(`
     💰 <b>Earn gold</b> — upgrade to level 3, or sell &amp; adapt<br>
     ⌨️ Hotkeys: <b>1–4</b> towers · <b>Space</b> start · <b>Esc</b> cancel
   </div>
-  <button class="btn gold big pulse" id="playBtn">▶ PLAY</button>`);
+  <button class="btn gold big pulse" id="playBtn">▶ PLAY</button>
+  <div class="social"><a class="xbtn" href="https://x.com/Wildkeepfun" target="_blank" rel="noopener" aria-label="Follow WILDKEEP on X">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+    <span>Follow on X</span></a></div>`);
 document.getElementById('playBtn').onclick = () => {
   ac();
   startMusic();
