@@ -66,6 +66,8 @@
   .card.sel{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 8px 22px rgba(0,0,0,.5);
     transform:translateY(-4px);}
   .card.off{filter:grayscale(.9) brightness(.6);}
+  .card.special{border-color:rgba(240,192,90,.5);box-shadow:0 0 0 1px rgba(240,192,90,.25),0 6px 18px rgba(0,0,0,.4);}
+  .card.special .nm{color:#ffe6a6;}
   .card canvas{position:relative;width:clamp(38px,4.6vw,52px);height:clamp(38px,4.6vw,52px);margin:0 auto;display:block;}
   .card .nm{font-size:clamp(9px,1.05vw,12px);font-weight:800;letter-spacing:.08em;margin-top:2px;}
   .card .ct{font-size:clamp(9px,1.05vw,12px);font-weight:700;color:var(--gold);
@@ -425,28 +427,28 @@ function startMusic(){
 // ---------- maps (each: a Catmull-Rom path + a biome theme) ----------
 const MAPS = [
   { name:'THE GROVE', biome:'Meadow', tag:'Gentle start', diff:1, pond:{ x:1185, y:128, r:66 },
-    hpF:1, spdF:1, goldF:1, hazard:null,
+    hpF:1, spdF:1, goldF:1, hazard:null, special:'thorn',
     theme:{ prop:'leafy', water:'pond', grass:['#83bd60','#6fae52','#5c9c46'], mottle:['52,96,44','160,214,120'],
       path:['rgba(40,60,30,.35)','#8f6a44','#d3ab77','rgba(233,199,148,.85)'],
       tuft:'46,92,38', flowers:['#fff6d8','#ffd6e0','#ffe98a','#e8d5ff'], vignette:'6,14,8' },
     raw:[[-60,150],[170,150],[330,230],[395,365],[310,480],[350,585],[520,610],
       [665,520],[660,370],[770,255],[950,225],[1070,320],[1035,470],[1150,565],[1340,600]] },
   { name:'GOLDEN DUNES', biome:'Desert', tag:'Tougher foes', diff:2, pond:{ x:158, y:135, r:52 },
-    hpF:1.15, spdF:1.05, goldF:1.15, hazard:'sandstorm',
+    hpF:1.15, spdF:1.05, goldF:1.15, hazard:'sandstorm', special:'quicksand',
     theme:{ prop:'cactus', water:'oasis', grass:['#e6c878','#d9b45f','#c99f49'], mottle:['150,110,40','245,225,150'],
       path:['rgba(90,60,20,.30)','#b3833f','#e6c07a','rgba(255,236,180,.85)'],
       tuft:'150,120,50', flowers:['#fff2c0','#ffd98a','#ffe0a0','#f7c96b'], vignette:'40,26,8' },
     raw:[[-60,140],[230,160],[380,320],[250,470],[400,590],[660,600],[780,440],
       [700,280],[880,190],[1090,240],[1150,410],[1010,520],[1150,600],[1360,520]] },
   { name:'FROSTFALL', biome:'Tundra', tag:'Icy & tanky', diff:3, pond:{ x:1130, y:150, r:70 },
-    hpF:1.3, spdF:1, goldF:1.3, hazard:'ice',
+    hpF:1.3, spdF:1, goldF:1.3, hazard:'ice', special:'blizzard',
     theme:{ prop:'pine', water:'ice', grass:['#dfeaf2','#c4d6e4','#a9c2d6'], mottle:['110,150,185','245,250,255'],
       path:['rgba(70,90,110,.32)','#8fa6b8','#c3d3de','rgba(240,248,255,.9)'],
       tuft:'150,170,190', flowers:['#ffffff','#d8ecff','#eaf6ff','#cfe6ff'], vignette:'20,34,50' },
     raw:[[-60,580],[220,560],[330,400],[240,250],[460,180],[660,270],[720,450],
       [920,470],[1040,330],[980,180],[1200,180],[1280,400],[1180,560],[1360,600]] },
   { name:'EMBERPATH', biome:'Volcanic', tag:'Fast & fiery', diff:3, pond:{ x:205, y:150, r:58 },
-    hpF:1.2, spdF:1.2, goldF:1.5, hazard:'eruption',
+    hpF:1.2, spdF:1.2, goldF:1.5, hazard:'eruption', special:'inferno',
     theme:{ prop:'dead', water:'lava', grass:['#3a3330','#2c2624','#211c1b'], mottle:['120,45,20','255,120,40'],
       path:['rgba(0,0,0,.5)','#5a3320','#7a4526','rgba(150,72,34,.9)'],
       tuft:'90,60,40', flowers:['#ff8a3c','#ffb861','#ff6a3c','#ffd08a'], vignette:'22,6,4' },
@@ -513,6 +515,7 @@ function loadMap(i){
   currentMap = i; const m = MAPS[i];
   RAW = m.raw; POND = m.pond; THEME = m.theme;
   buildPath(); genSpots(); genDecor(); drawBackground();
+  if (typeof buildCards === 'function'){ buildCards(); syncCards(); }
 }
 function pointAt(d){
   d = clamp(d, 0, TOTAL - .01);
@@ -803,8 +806,14 @@ const TDEF = {
   frost:  { name:'FROST',  cost:150, upg:[110,190], dmg:[10,18,32],   rate:[.85,.75,.65],  range:[135,148,162], slow:[.55,.45,.35], slowDur:2, desc:'Chills & slows' },
   cannon: { name:'CANNON', cost:220, upg:[170,280], dmg:[42,80,140],  rate:[1.5,1.35,1.2], range:[160,172,185], splash:[62,74,88], desc:'Area explosion' },
   tesla:  { name:'TESLA',  cost:300, upg:[240,400], dmg:[60,100,165], rate:[1.15,1,.85],   range:[165,178,192], chain:[3,4,5], desc:'Chain lightning' },
+  // ---- biome-exclusive towers (unlocked by the active map) ----
+  thorn:    { name:'THORN',    cost:130, upg:[110,190], dmg:[11,19,32],   rate:[.4,.35,.3],    range:[116,128,142], kind:'dmgfield',  biome:0, desc:'Damages all in range' },
+  quicksand:{ name:'QUICKSAND',cost:160, upg:[120,200], dmg:[0,0,0],      rate:[1,1,1],        range:[120,134,150], slow:[.5,.4,.3],  kind:'slowfield', biome:1, desc:'Slows all in range' },
+  blizzard: { name:'BLIZZARD', cost:260, upg:[200,340], dmg:[24,42,70],   rate:[1.4,1.25,1.1], range:[150,165,180], splash:[70,84,100], slow:[.6,.5,.4], slowDur:2.2, kind:'aoefrost', biome:2, desc:'AoE frost blast' },
+  inferno:  { name:'INFERNO',  cost:240, upg:[190,320], dmg:[8,14,22],    rate:[.18,.15,.12],  range:[118,130,144], burn:[12,22,36], kind:'burn', biome:3, desc:'Burns over time' },
 };
 const TKEYS = ['archer','frost','cannon','tesla'];
+function dockKeys(){ const sp = MAPS[currentMap] && MAPS[currentMap].special; return sp ? TKEYS.concat([sp]) : TKEYS.slice(); }
 const EDEF = {
   goblin: { r:13, hp:40,  spd:56,  gold:6,  dmgL:1 },
   runner: { r:11, hp:30,  spd:104, gold:7,  dmgL:1 },
@@ -909,6 +918,7 @@ function makeEnemy(type, mods = {}){
     spd: d.spd * spdMult(wave) * (mods.spdF || 1) * (mf.spdF || 1),
     gold: Math.round((d.gold + Math.floor(wave/4) * (type==='boss'?4:1)) * (mods.goldF || 1) * (mf.goldF || 1)),
     dmgL: d.dmgL, dist: mods.dist || 0, slowT: 0, slowF: 1, seed: rand(0,TAU), age: 0, flash: 0, dead: false,
+    burnT: 0, burnDps: 0,
     // traits
     shield: 0, maxShield: 0, split: !!mods.split, heal: !!mods.heal, fly: !!mods.fly, healT: rand(0,1),
   };
@@ -962,6 +972,7 @@ function damageEnemy(e, dmg){
   }
 }
 function applySlow(e, f, dur){ if (f < e.slowF || e.slowT <= 0) e.slowF = f; e.slowT = Math.max(e.slowT, dur); }
+function applyBurn(e, dps, dur){ e.burnDps = Math.max(e.burnDps, dps); e.burnT = Math.max(e.burnT, dur); }
 
 // ---------- particles & effects ----------
 function spark(x, y, col, n, spd, life, size, g = 60){
@@ -1060,16 +1071,18 @@ function fireTower(t, target){
   }
   // projectile towers
   let ox, oy;
-  if (t.type === 'frost'){ ox = t.x; oy = t.y - 20*s; }
+  if (t.type === 'frost' || t.type === 'blizzard'){ ox = t.x; oy = t.y - 20*s; }
   else { const len = t.type === 'cannon' ? 24*s : 16*s; ox = t.x + Math.cos(t.angle)*len; oy = t.y + Math.sin(t.angle)*len; }
-  const spd = t.type === 'archer' ? 560 : t.type === 'cannon' ? 300 : 380;
+  const spd = t.type === 'archer' ? 560 : t.type === 'inferno' ? 620 : t.type === 'cannon' ? 300 : t.type === 'blizzard' ? 340 : 380;
   projs.push({ type:t.type, x:ox, y:oy, tgt:target, lx:ox, ly:oy, spd,
     dmg:tStat(t,'dmg') * rageMul,
     splash: d.splash ? d.splash[t.lvl-1] : 0,
     slow: d.slow ? d.slow[t.lvl-1] : 0, slowDur: d.slowDur || 0,
+    burn: d.burn ? d.burn[t.lvl-1] : 0,
     trail: 0 });
   if (t.type === 'cannon'){ t.recoil = 6; SND.cannon(); smoke(ox, oy, 2); }
-  else if (t.type === 'frost') SND.frost();
+  else if (t.type === 'frost' || t.type === 'blizzard') SND.frost();
+  else if (t.type === 'inferno') SND.shoot();
   else SND.shoot();
 }
 
@@ -1110,6 +1123,13 @@ function updateCombat(dt){
         fx.push({ kind:'ring', x:hp0.x, y:hp0.y, r:6, max:140, life:.5, maxL:.5, col:'120,240,150' });
       }
     }
+    if (e.burnT > 0){                       // inferno burn damage-over-time
+      e.burnT -= dt; damageEnemy(e, e.burnDps * dt);
+      if (e.dead) continue;
+      if (Math.random() < dt * 12){ const bp = pointAt(e.dist);
+        parts.push({ x:bp.x+rand(-5,5), y:bp.y-e.r*.3, vx:rand(-8,8), vy:rand(-30,-12), g:-10,
+          life:rand(.3,.55), max:.55, size:rand(2,4), col:'255,140,50', mode:'glow' }); }
+    }
     if (e.dist >= TOTAL){
       e.dead = true;
       lives -= e.dmgL; flashRed = .55; shake = Math.max(shake, 4);
@@ -1134,6 +1154,18 @@ function updateCombat(dt){
     t.cd -= dt; t.flash -= dt; t.recoil = Math.max(0, t.recoil - dt*30); t.sparkT -= dt;
     const range = tStat(t, 'range') * rangeMul;
     const inRange = e => { const p = pointAt(e.dist); return dist(t.x, t.y, p.x, p.y) <= range; };
+    const kind = TDEF[t.type].kind;
+    if (kind === 'dmgfield' || kind === 'slowfield'){   // aura towers — no aiming, affect all in range
+      let active = false;
+      for (const e of enemies){
+        if (e.dead || !inRange(e)) continue;
+        active = true;
+        if (kind === 'dmgfield') damageEnemy(e, tStat(t, 'dmg') * dt);
+        else applySlow(e, tStat(t, 'slow'), .2);
+      }
+      t.pulse = (t.pulse || 0) + dt * (active ? 3 : 1.2);
+      continue;
+    }
     let target = null;
     // player focus-fire wins if that enemy is in range and hittable
     if (focusEnemy && !focusEnemy.dead && canHit(t.type, focusEnemy) && inRange(focusEnemy)) target = focusEnemy;
@@ -1178,9 +1210,21 @@ function updateCombat(dt){
           const p = pointAt(e.dist), r = dist(pr.lx, pr.ly, p.x, p.y);
           if (r <= pr.splash) damageEnemy(e, Math.round(pr.dmg * (1 - .5 * r / pr.splash)));
         }
+      } else if (pr.type === 'blizzard'){     // AoE frost — damage + chill everyone in blast
+        frostBurst(pr.lx, pr.ly);
+        fx.push({ kind:'ring', x:pr.lx, y:pr.ly, r:6, max:pr.splash*1.1, life:.32, maxL:.32, col:'180,230,255' });
+        spark(pr.lx, pr.ly, '200,240,255', 12, 150, .45, 4, 40);
+        for (const e of enemies){
+          if (e.dead) continue;
+          const p = pointAt(e.dist), r = dist(pr.lx, pr.ly, p.x, p.y);
+          if (r <= pr.splash){ damageEnemy(e, Math.round(pr.dmg * (1 - .4 * r / pr.splash))); applySlow(e, pr.slow, pr.slowDur); }
+        }
       } else if (pr.type === 'frost'){
         frostBurst(pr.lx, pr.ly);
         if (pr.tgt && !pr.tgt.dead){ damageEnemy(pr.tgt, pr.dmg); applySlow(pr.tgt, pr.slow, pr.slowDur); }
+      } else if (pr.type === 'inferno'){
+        if (pr.tgt && !pr.tgt.dead){ damageEnemy(pr.tgt, pr.dmg); applyBurn(pr.tgt, pr.burn, 2.5);
+          spark(pr.lx, pr.ly, '255,150,50', 4, 80, .25, 3, 40); }
       } else {
         if (pr.tgt && !pr.tgt.dead){ damageEnemy(pr.tgt, pr.dmg); spark(pr.lx, pr.ly, '255,240,200', 3, 60, .2, 2, 40); }
       }
@@ -1193,6 +1237,10 @@ function updateCombat(dt){
       parts.push({ x:pr.x, y:pr.y, vx:rand(-8,8), vy:rand(-8,8), g:-6, life:.3, max:.3, size:rand(2.5,4.5), col:'130,130,130', mode:'smoke' }); }
     if (pr.type === 'frost' && pr.trail <= 0){ pr.trail = .03;
       parts.push({ x:pr.x, y:pr.y, vx:rand(-12,12), vy:rand(-12,12), g:0, life:.28, max:.28, size:rand(1.5,3), col:'180,230,255', mode:'glow' }); }
+    if (pr.type === 'blizzard' && pr.trail <= 0){ pr.trail = .025;
+      parts.push({ x:pr.x, y:pr.y, vx:rand(-14,14), vy:rand(-14,14), g:0, life:.3, max:.3, size:rand(2,4), col:'200,240,255', mode:'glow' }); }
+    if (pr.type === 'inferno' && pr.trail <= 0){ pr.trail = .015;
+      parts.push({ x:pr.x, y:pr.y, vx:rand(-10,10), vy:rand(-18,-4), g:-14, life:rand(.2,.4), max:.4, size:rand(2.5,5), col:'255,140,50', mode:'glow' }); }
   }
   projs = projs.filter(p => !p.hit);
 
@@ -1373,6 +1421,7 @@ window.addEventListener('keydown', e => {
   if (e.key === ' '){ e.preventDefault(); if (state === 'idle') startWave(); }
   const i = ['1','2','3','4'].indexOf(e.key);
   if (i >= 0) togglePlacing(TKEYS[i]);
+  if (e.key === '5' && MAPS[currentMap].special) togglePlacing(MAPS[currentMap].special);
   const k = e.key.toLowerCase();
   if (k === 'q') useAbility('meteor');
   if (k === 'w') useAbility('freeze');
@@ -1418,7 +1467,9 @@ function refreshPop(){
   if (t.lvl < 3){ upg.disabled = gold < d.upg[t.lvl-1]; upg.textContent = '⬆ UPGRADE ' + d.upg[t.lvl-1]; }
   else { upg.disabled = true; upg.textContent = 'MAX LEVEL'; }
   document.getElementById('sellBtn').textContent = 'SELL +' + Math.floor(t.spent * .7);
-  document.getElementById('prioBtn').textContent = '🎯 TARGET: ' + PRIO_LABEL[t.prio || 'first'];
+  const pb = document.getElementById('prioBtn'), fld = TDEF[t.type].kind === 'dmgfield' || TDEF[t.type].kind === 'slowfield';
+  pb.style.display = fld ? 'none' : 'block';
+  pb.textContent = '🎯 TARGET: ' + PRIO_LABEL[t.prio || 'first'];
 }
 const PRIO_ORDER = ['first','last','strong','close'];
 const PRIO_LABEL = { first:'FIRST', last:'LAST', strong:'STRONGEST', close:'CLOSEST' };
@@ -1641,7 +1692,7 @@ function drawTowerSprite(g, x, y, type, lvl, angle, flash, recoil, alpha = 1){
     g.fillStyle = orb; g.beginPath(); g.arc(0, -20*s + bob, 9*s, 0, TAU); g.fill();
     g.restore();
   }
-  else { // tesla
+  else if (type === 'tesla'){
     g.fillStyle = '#8a5a28';
     g.beginPath(); g.roundRect(-7*s, -8*s, 14*s, 12*s, 3); g.fill();
     for (let i = 0; i < 3; i++){
@@ -1658,6 +1709,46 @@ function drawTowerSprite(g, x, y, type, lvl, angle, flash, recoil, alpha = 1){
     g.restore();
     g.fillStyle = '#f4f0e2'; g.strokeStyle = '#8a6c14'; g.lineWidth = 1.4;
     g.beginPath(); g.arc(0, -27*s, 4.6*s, 0, TAU); g.fill(); g.stroke();
+  } else if (type === 'thorn'){                 // spiky vine cluster
+    g.fillStyle = '#3f7a34'; g.strokeStyle = '#255021'; g.lineWidth = 1.6;
+    g.beginPath(); g.arc(0, -6*s, 9*s, 0, TAU); g.fill(); g.stroke();
+    for (let i = 0; i < 8; i++){
+      const a = i/8*TAU + time*.5, r0 = 7*s, r1 = 15*s + (i%2)*3*s;
+      g.strokeStyle = '#4f9a3f'; g.lineWidth = 3*s;
+      g.beginPath(); g.moveTo(Math.cos(a)*r0, -6*s + Math.sin(a)*r0);
+      g.lineTo(Math.cos(a)*r1, -6*s + Math.sin(a)*r1); g.stroke();
+      g.fillStyle = '#c8f08a'; g.beginPath();
+      g.arc(Math.cos(a)*r1, -6*s + Math.sin(a)*r1, 1.8*s, 0, TAU); g.fill();
+    }
+  } else if (type === 'quicksand'){             // swirling sand pit
+    g.save(); g.translate(0, -4*s);
+    for (let i = 3; i >= 0; i--){
+      const rr = (5 + i*3.4)*s;
+      g.strokeStyle = `rgba(${190-i*14},${150-i*12},${90-i*8},.9)`; g.lineWidth = 2.4*s;
+      g.beginPath(); g.arc(0, 0, rr, time*1.6 + i, time*1.6 + i + 4.4); g.stroke();
+    }
+    g.fillStyle = '#8a6a38'; g.beginPath(); g.arc(0, 0, 3*s, 0, TAU); g.fill();
+    g.restore();
+  } else if (type === 'blizzard'){              // ice crystal orb
+    g.save(); g.globalCompositeOperation = 'lighter';
+    const bp = g.createRadialGradient(0, -24*s, 1, 0, -24*s, 12*s + Math.sin(time*4)*1.5);
+    bp.addColorStop(0, 'rgba(230,250,255,.95)'); bp.addColorStop(.5, 'rgba(150,215,250,.55)'); bp.addColorStop(1, 'rgba(150,215,250,0)');
+    g.fillStyle = bp; g.beginPath(); g.arc(0, -24*s, 13*s, 0, TAU); g.fill();
+    g.restore();
+    g.fillStyle = '#e8f6ff'; g.strokeStyle = '#5aa0c8'; g.lineWidth = 1.6;
+    for (let i = 0; i < 6; i++){ const a = i/6*TAU + time*.6;
+      g.beginPath(); g.moveTo(0, -24*s); g.lineTo(Math.cos(a)*9*s, -24*s + Math.sin(a)*9*s); g.stroke(); }
+    g.beginPath(); g.arc(0, -24*s, 4.5*s, 0, TAU); g.fill(); g.stroke();
+  } else if (type === 'inferno'){               // flame nozzle
+    g.save(); g.rotate(angle);
+    g.fillStyle = '#2a2320'; g.strokeStyle = '#0d0b0a'; g.lineWidth = 2;
+    g.beginPath(); g.roundRect(-4*s, -5*s, 26*s, 10*s, 3); g.fill(); g.stroke();
+    g.fillStyle = '#3a322e'; g.beginPath(); g.arc(22*s, 0, 6*s, 0, TAU); g.fill();
+    g.save(); g.globalCompositeOperation = 'lighter';
+    const fl = g.createRadialGradient(24*s, 0, 1, 24*s, 0, 12*s + Math.sin(time*18)*2);
+    fl.addColorStop(0, 'rgba(255,240,170,.95)'); fl.addColorStop(.45, 'rgba(255,140,50,.7)'); fl.addColorStop(1, 'rgba(255,90,30,0)');
+    g.fillStyle = fl; g.beginPath(); g.arc(24*s, 0, 12*s, 0, TAU); g.fill();
+    g.restore(); g.restore();
   }
 
   // muzzle flash
@@ -1714,6 +1805,21 @@ function render(){
 
   // selected tower range
   if (selTower) drawRange(ctx, selTower.x, selTower.y, tStat(selTower, 'range'));
+
+  // field-tower auras (thorn / quicksand)
+  for (const t of towers){
+    const kind = TDEF[t.type].kind;
+    if (kind !== 'dmgfield' && kind !== 'slowfield') continue;
+    const rr = tStat(t, 'range'), pulse = .5 + .5*Math.sin(t.pulse || 0);
+    const col = kind === 'dmgfield' ? '120,220,90' : '224,192,110';
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const gg = ctx.createRadialGradient(t.x, t.y, rr*.2, t.x, t.y, rr);
+    gg.addColorStop(0, `rgba(${col},${.05 + .06*pulse})`); gg.addColorStop(1, `rgba(${col},0)`);
+    ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(t.x, t.y, rr, 0, TAU); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = `rgba(${col},${.3 + .3*pulse})`; ctx.lineWidth = 1.5; ctx.setLineDash([5, 6]);
+    ctx.beginPath(); ctx.arc(t.x, t.y, rr, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+  }
 
   // depth-sorted entities
   const list = [];
@@ -1778,11 +1884,18 @@ function render(){
       ctx.beginPath(); ctx.arc(pr.x, pr.y, 5.5, 0, TAU); ctx.fill(); ctx.stroke();
       ctx.fillStyle = 'rgba(255,255,255,.25)';
       ctx.beginPath(); ctx.arc(pr.x - 1.6, pr.y - 1.6, 1.8, 0, TAU); ctx.fill();
+    } else if (pr.type === 'inferno'){
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const fg = ctx.createRadialGradient(pr.x, pr.y, 1, pr.x, pr.y, 9);
+      fg.addColorStop(0, 'rgba(255,240,180,.95)'); fg.addColorStop(.5, 'rgba(255,140,50,.7)'); fg.addColorStop(1, 'rgba(255,90,30,0)');
+      ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(pr.x, pr.y, 9, 0, TAU); ctx.fill();
+      ctx.restore();
     } else {
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      const og = ctx.createRadialGradient(pr.x, pr.y, 1, pr.x, pr.y, 9);
+      const big = pr.type === 'blizzard';
+      const og = ctx.createRadialGradient(pr.x, pr.y, 1, pr.x, pr.y, big ? 13 : 9);
       og.addColorStop(0, 'rgba(240,252,255,.95)'); og.addColorStop(.5, 'rgba(140,215,250,.6)'); og.addColorStop(1, 'rgba(140,215,250,0)');
-      ctx.fillStyle = og; ctx.beginPath(); ctx.arc(pr.x, pr.y, 9, 0, TAU); ctx.fill();
+      ctx.fillStyle = og; ctx.beginPath(); ctx.arc(pr.x, pr.y, big ? 13 : 9, 0, TAU); ctx.fill();
       ctx.restore();
     }
   }
@@ -2123,7 +2236,8 @@ document.getElementById('sndBtn').onclick = e => {
 function drawCardIcon(g, key){
   // 64×64 logical space, centered symbolic icon per tower
   const cx = 32, cy = 32;
-  const glows = { archer:'240,170,80', frost:'120,210,250', cannon:'255,140,70', tesla:'255,225,120' };
+  const glows = { archer:'240,170,80', frost:'120,210,250', cannon:'255,140,70', tesla:'255,225,120',
+    thorn:'120,220,90', quicksand:'224,192,110', blizzard:'150,215,250', inferno:'255,140,50' };
   const gl = g.createRadialGradient(cx, cy, 4, cx, cy, 30);
   gl.addColorStop(0, `rgba(${glows[key]},.32)`); gl.addColorStop(1, `rgba(${glows[key]},0)`);
   g.fillStyle = gl; g.beginPath(); g.arc(cx, cy, 30, 0, TAU); g.fill();
@@ -2173,7 +2287,7 @@ function drawCardIcon(g, key){
     g.beginPath(); g.arc(-19, 0, 7.5, 0, TAU); g.fill(); g.stroke();
     g.restore();
   }
-  else { // tesla — lightning bolt
+  else if (key === 'tesla'){ // lightning bolt
     g.save(); g.translate(cx, cy);
     g.shadowColor = 'rgba(255,225,120,.95)'; g.shadowBlur = 10;
     const bolt = [[7,-22],[-8,3],[-1,3],[-7,22],[9,-2],[2,-2]];
@@ -2184,15 +2298,52 @@ function drawCardIcon(g, key){
     g.shadowBlur = 0; g.stroke();
     g.restore();
   }
+  else if (key === 'thorn'){
+    g.save(); g.translate(cx, cy);
+    g.strokeStyle = '#4f9a3f'; g.lineWidth = 3.6; g.lineCap = 'round';
+    for (let i = 0; i < 8; i++){ const a = i/8*TAU;
+      g.beginPath(); g.moveTo(Math.cos(a)*6, Math.sin(a)*6); g.lineTo(Math.cos(a)*20, Math.sin(a)*20); g.stroke();
+      g.fillStyle = '#c8f08a'; g.beginPath(); g.arc(Math.cos(a)*20, Math.sin(a)*20, 2.4, 0, TAU); g.fill(); }
+    g.fillStyle = '#356e2c'; g.beginPath(); g.arc(0, 0, 7, 0, TAU); g.fill();
+    g.restore();
+  }
+  else if (key === 'quicksand'){
+    g.save(); g.translate(cx, cy);
+    for (let i = 3; i >= 0; i--){ const rr = 5 + i*5;
+      g.strokeStyle = `rgba(${200-i*16},${160-i*14},${95-i*10},.95)`; g.lineWidth = 3.4;
+      g.beginPath(); g.arc(0, 0, rr, i, i + 4.6); g.stroke(); }
+    g.fillStyle = '#8a6a38'; g.beginPath(); g.arc(0, 0, 3.4, 0, TAU); g.fill();
+    g.restore();
+  }
+  else if (key === 'blizzard'){
+    g.save(); g.translate(cx, cy);
+    g.strokeStyle = '#d6f1fd'; g.lineWidth = 4; g.lineCap = 'round';
+    g.shadowColor = 'rgba(150,215,250,.95)'; g.shadowBlur = 10;
+    for (let i = 0; i < 6; i++){ g.save(); g.rotate(i*Math.PI/3);
+      g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -22); g.stroke();
+      g.beginPath(); g.moveTo(0, -13); g.lineTo(-7, -19); g.moveTo(0, -13); g.lineTo(7, -19); g.stroke(); g.restore(); }
+    g.shadowBlur = 0; g.fillStyle = '#f2fbff'; g.beginPath(); g.arc(0, 0, 5, 0, TAU); g.fill();
+    g.restore();
+  }
+  else if (key === 'inferno'){
+    g.save(); g.translate(cx, cy + 6);
+    g.shadowColor = 'rgba(255,140,50,.95)'; g.shadowBlur = 12;
+    const flame = (col, sc) => { g.fillStyle = col; g.beginPath();
+      g.moveTo(0, -22*sc); g.bezierCurveTo(11*sc, -8*sc, 9*sc, 8*sc, 0, 12*sc);
+      g.bezierCurveTo(-9*sc, 8*sc, -11*sc, -8*sc, 0, -22*sc); g.closePath(); g.fill(); };
+    flame('#e0431c', 1); flame('#ff8a2c', .7); flame('#ffe27a', .4);
+    g.shadowBlur = 0; g.restore();
+  }
 }
 
 const dock = document.getElementById('dock');
-const cards = {};
+let cards = {};
 function buildCards(){
-  TKEYS.forEach((key, i) => {
+  dock.innerHTML = ''; cards = {};
+  dockKeys().forEach((key, i) => {
     const d = TDEF[key];
     const el = document.createElement('div');
-    el.className = 'card';
+    el.className = 'card' + (d.biome !== undefined ? ' special' : '');
     el.title = d.desc;
     const ic = document.createElement('canvas');
     ic.width = 128; ic.height = 128;
@@ -2209,7 +2360,8 @@ function buildCards(){
   });
 }
 function syncCards(){
-  for (const key of TKEYS){
+  for (const key of dockKeys()){
+    if (!cards[key]) continue;
     cards[key].classList.toggle('sel', placing === key);
     cards[key].classList.toggle('off', gold < TDEF[key].cost);
     cards[key].classList.toggle('can', gold >= TDEF[key].cost);
