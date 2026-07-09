@@ -178,6 +178,20 @@
     line-height:1.5;color:#dfe6d6;max-width:360px;}
   .tips b{color:var(--gold);}
   .big{font-size:clamp(14px,2vw,18px);padding:11px 30px;border-radius:14px;}
+  /* ---------- map select ---------- */
+  .mapgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:11px;margin:0 auto 10px;max-width:520px;}
+  .mapcard{background:var(--glass);border:1px solid var(--line);border-radius:14px;padding:8px;cursor:pointer;
+    color:var(--txt);text-align:left;transition:transform .12s,border-color .12s,box-shadow .12s;}
+  .mapcard:hover{transform:translateY(-3px);border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 8px 22px rgba(0,0,0,.5);}
+  .mapmini{width:100%;height:auto;border-radius:9px;display:block;border:1px solid rgba(0,0,0,.35);}
+  .mapnm{font-weight:900;letter-spacing:.05em;font-size:clamp(12px,1.6vw,15px);margin-top:7px;
+    background:linear-gradient(180deg,#ffe9a8,#e9a93c);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .mapmeta{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;
+    color:#b9c4ae;font-weight:700;letter-spacing:.05em;margin-top:1px;}
+  .mapdiff{color:var(--gold);letter-spacing:1px;}
+  .mapback{margin-top:2px;background:none;border:none;color:#9aa694;font-size:12.5px;cursor:pointer;
+    letter-spacing:.05em;text-decoration:underline;}
+  .mapback:hover{color:#d8e2cc;}
   .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
   .score{font-size:clamp(13px,2vw,16px);color:#cfd8c8;margin:4px 0 22px;line-height:1.8;}
   .brandmark{width:clamp(62px,9.5vw,92px);height:auto;margin:0 auto 2px;display:block;
@@ -397,11 +411,37 @@ function startMusic(){
   }, 250);
 }
 
-// ---------- path (organic Catmull-Rom spline) ----------
-const RAW = [
-  [-60,150],[170,150],[330,230],[395,365],[310,480],[350,585],[520,610],
-  [665,520],[660,370],[770,255],[950,225],[1070,320],[1035,470],[1150,565],[1340,600]
+// ---------- maps (each: a Catmull-Rom path + a biome theme) ----------
+const MAPS = [
+  { name:'THE GROVE', biome:'Meadow', diff:1, pond:{ x:1185, y:128, r:66 },
+    theme:{ grass:['#83bd60','#6fae52','#5c9c46'], mottle:['52,96,44','160,214,120'],
+      path:['rgba(40,60,30,.35)','#8f6a44','#d3ab77','rgba(233,199,148,.85)'],
+      flowers:['#fff6d8','#ffd6e0','#ffe98a','#e8d5ff'], vignette:'6,14,8' },
+    raw:[[-60,150],[170,150],[330,230],[395,365],[310,480],[350,585],[520,610],
+      [665,520],[660,370],[770,255],[950,225],[1070,320],[1035,470],[1150,565],[1340,600]] },
+  { name:'GOLDEN DUNES', biome:'Desert', diff:2, pond:{ x:150, y:130, r:56 },
+    theme:{ grass:['#e6c878','#d9b45f','#c99f49'], mottle:['150,110,40','245,225,150'],
+      path:['rgba(90,60,20,.30)','#b3833f','#e6c07a','rgba(255,236,180,.85)'],
+      flowers:['#fff2c0','#ffd98a','#ffe0a0','#f7c96b'], vignette:'40,26,8' },
+    raw:[[-60,140],[230,160],[380,320],[250,470],[400,590],[660,600],[780,440],
+      [700,280],[880,190],[1090,240],[1150,410],[1010,520],[1150,600],[1360,520]] },
+  { name:'FROSTFALL', biome:'Tundra', diff:3, pond:{ x:1130, y:150, r:70 },
+    theme:{ grass:['#dfeaf2','#c4d6e4','#a9c2d6'], mottle:['110,150,185','245,250,255'],
+      path:['rgba(70,90,110,.32)','#8fa6b8','#c3d3de','rgba(240,248,255,.9)'],
+      flowers:['#ffffff','#d8ecff','#eaf6ff','#cfe6ff'], vignette:'20,34,50' },
+    raw:[[-60,580],[220,560],[330,400],[240,250],[460,180],[660,270],[720,450],
+      [920,470],[1040,330],[980,180],[1200,180],[1280,400],[1180,560],[1360,600]] },
+  { name:'EMBERPATH', biome:'Volcanic', diff:3, pond:null,
+    theme:{ grass:['#3a3330','#2c2624','#211c1b'], mottle:['120,45,20','255,120,40'],
+      path:['rgba(0,0,0,.5)','#5a3320','#7a4526','rgba(150,72,34,.9)'],
+      flowers:['#ff8a3c','#ffb861','#ff6a3c','#ffd08a'], vignette:'22,6,4' },
+    raw:[[600,-60],[600,150],[420,250],[320,430],[500,540],[720,500],[800,330],
+      [1000,300],[1080,470],[900,610],[1150,610],[1300,470],[1400,560]] },
 ];
+let currentMap = 0;
+let RAW = MAPS[0].raw, THEME = MAPS[0].theme;
+
+// ---------- path (organic Catmull-Rom spline) ----------
 function catmull(p0, p1, p2, p3, t){
   const t2 = t*t, t3 = t2*t;
   return [
@@ -410,20 +450,31 @@ function catmull(p0, p1, p2, p3, t){
   ];
 }
 const PTS = []; let TOTAL = 0;
-(function buildPath(){
-  const raw = [];
-  for (let i = 0; i < RAW.length - 1; i++){
-    const p0 = RAW[Math.max(0, i-1)], p1 = RAW[i], p2 = RAW[i+1], p3 = RAW[Math.min(RAW.length-1, i+2)];
+function splinePoints(rawPts){
+  const out = [];
+  for (let i = 0; i < rawPts.length - 1; i++){
+    const p0 = rawPts[Math.max(0, i-1)], p1 = rawPts[i], p2 = rawPts[i+1], p3 = rawPts[Math.min(rawPts.length-1, i+2)];
     const steps = 24;
-    for (let s = (i === 0 ? 0 : 1); s <= steps; s++) raw.push(catmull(p0, p1, p2, p3, s/steps));
+    for (let s = (i === 0 ? 0 : 1); s <= steps; s++) out.push(catmull(p0, p1, p2, p3, s/steps));
   }
+  return out;
+}
+function buildPath(){
+  PTS.length = 0;
+  const raw = splinePoints(RAW);
   let d = 0;
   for (let i = 0; i < raw.length; i++){
     if (i > 0) d += dist(raw[i-1][0], raw[i-1][1], raw[i][0], raw[i][1]);
     PTS.push({ x: raw[i][0], y: raw[i][1], d });
   }
   TOTAL = d;
-})();
+}
+buildPath();
+function loadMap(i){
+  currentMap = i; const m = MAPS[i];
+  RAW = m.raw; POND = m.pond; THEME = m.theme;
+  buildPath(); genSpots(); genDecor(); drawBackground();
+}
 function pointAt(d){
   d = clamp(d, 0, TOTAL - .01);
   let lo = 0, hi = PTS.length - 1;
@@ -441,33 +492,35 @@ function distToPath(x, y){
 }
 
 // ---------- decorations ----------
-const POND = { x: 1185, y: 128, r: 66 };
+let POND = MAPS[0].pond;
 let trees = [], rocks = [], flowers = [], tufts = [];
 function genDecor(){
   trees = []; rocks = []; flowers = []; tufts = [];
+  const nearPond = (x, y, pad) => POND && dist(x, y, POND.x, POND.y) < POND.r + pad;
+  const fcols = (THEME && THEME.flowers) || ['#fff6d8','#ffd6e0','#ffe98a','#e8d5ff'];
   let tries = 0;
   while (trees.length < 11 && tries++ < 500){
     const x = rand(45, 1235), y = rand(60, 640);
     if (distToPath(x, y) < 80) continue;
-    if (dist(x, y, POND.x, POND.y) < POND.r + 44) continue;
+    if (nearPond(x, y, 44)) continue;
     if (trees.some(t => dist(x, y, t.x, t.y) < 62)) continue;
     trees.push({ x, y, r: rand(17, 25), hue: irand(0, 2), seed: rand(0, TAU) });
   }
   tries = 0;
   while (rocks.length < 7 && tries++ < 300){
     const x = rand(40, 1240), y = rand(60, 645);
-    if (distToPath(x, y) < 58 || dist(x, y, POND.x, POND.y) < POND.r + 22) continue;
+    if (distToPath(x, y) < 58 || nearPond(x, y, 22)) continue;
     if (trees.some(t => dist(x, y, t.x, t.y) < 46)) continue;
     rocks.push({ x, y, r: rand(7, 14), a: rand(0, TAU) });
   }
   for (let i = 0; i < 30; i++){
     const x = rand(30, 1250), y = rand(55, 655);
-    if (distToPath(x, y) < 42 || dist(x, y, POND.x, POND.y) < POND.r + 12) continue;
-    flowers.push({ x, y, c: ['#fff6d8','#ffd6e0','#ffe98a','#e8d5ff'][irand(0,3)] });
+    if (distToPath(x, y) < 42 || nearPond(x, y, 12)) continue;
+    flowers.push({ x, y, c: fcols[irand(0,3)] });
   }
   for (let i = 0; i < 46; i++){
     const x = rand(25, 1255), y = rand(55, 660);
-    if (distToPath(x, y) < 38 || dist(x, y, POND.x, POND.y) < POND.r + 10) continue;
+    if (distToPath(x, y) < 38 || nearPond(x, y, 10)) continue;
     tufts.push({ x, y, s: rand(3, 6) });
   }
 }
@@ -502,9 +555,10 @@ function drawBackground(){
   const g = bctx;
   g.clearRect(0, 0, W, H);
 
+  const TH = THEME;
   // meadow base
   const gr = g.createLinearGradient(0, 0, 0, H);
-  gr.addColorStop(0, '#83bd60'); gr.addColorStop(.55, '#6fae52'); gr.addColorStop(1, '#5c9c46');
+  gr.addColorStop(0, TH.grass[0]); gr.addColorStop(.55, TH.grass[1]); gr.addColorStop(1, TH.grass[2]);
   g.fillStyle = gr; g.fillRect(0, 0, W, H);
 
   // sun glow
@@ -517,12 +571,13 @@ function drawBackground(){
     const x = rand(0, W), y = rand(0, H), r = rand(18, 70);
     const m = g.createRadialGradient(x, y, 0, x, y, r);
     const dark = Math.random() < .5;
-    m.addColorStop(0, dark ? 'rgba(52,96,44,.10)' : 'rgba(160,214,120,.10)');
+    m.addColorStop(0, `rgba(${dark ? TH.mottle[0] : TH.mottle[1]},.10)`);
     m.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = m; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
   }
 
   // pond
+  if (POND){
   g.save();
   g.beginPath(); g.ellipse(POND.x, POND.y, POND.r + 10, POND.r * .82 + 8, 0, 0, TAU);
   g.fillStyle = '#c9b881'; g.fill();
@@ -538,15 +593,16 @@ function drawBackground(){
     g.beginPath(); g.ellipse(lx, ly, 9, 6.5, a, .25, TAU - .25); g.lineTo(lx, ly); g.fill();
   }
   g.restore();
+  }
 
   // path — layered strokes along the spline
   g.lineJoin = 'round'; g.lineCap = 'round';
   const trace = () => { g.beginPath(); g.moveTo(PTS[0].x, PTS[0].y);
     for (let i = 1; i < PTS.length; i++) g.lineTo(PTS[i].x, PTS[i].y); };
-  trace(); g.strokeStyle = 'rgba(40,60,30,.35)'; g.lineWidth = 60; g.stroke(); // soft shadow edge
-  trace(); g.strokeStyle = '#8f6a44'; g.lineWidth = 54; g.stroke();            // dark rim
-  trace(); g.strokeStyle = '#d3ab77'; g.lineWidth = 46; g.stroke();            // dirt
-  trace(); g.strokeStyle = 'rgba(233,199,148,.85)'; g.lineWidth = 18; g.stroke(); // worn center
+  trace(); g.strokeStyle = TH.path[0]; g.lineWidth = 60; g.stroke(); // soft shadow edge
+  trace(); g.strokeStyle = TH.path[1]; g.lineWidth = 54; g.stroke(); // dark rim
+  trace(); g.strokeStyle = TH.path[2]; g.lineWidth = 46; g.stroke(); // dirt
+  trace(); g.strokeStyle = TH.path[3]; g.lineWidth = 18; g.stroke(); // worn center
   // pebbles
   for (let d = 24; d < TOTAL - 24; d += 30){
     const p = pointAt(d + rand(-8, 8)), off = rand(-15, 15);
@@ -642,7 +698,7 @@ function drawBackground(){
 
   // vignette
   const v = g.createRadialGradient(W/2, H/2, H*.45, W/2, H/2, H*.95);
-  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(6,14,8,.34)');
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, `rgba(${TH.vignette},.34)`);
   g.fillStyle = v; g.fillRect(0, 0, W, H);
 }
 
@@ -838,7 +894,7 @@ function towerAt(x, y){ return towers.find(t => dist(x, y, t.x, t.y) < 25); }
 function canPlace(x, y){
   if (x < 30 || x > 1250 || y < 70 || y > 600) return false;
   if (distToPath(x, y) < 48) return false;
-  if (dist(x, y, POND.x, POND.y) < POND.r + 24) return false;
+  if (POND && dist(x, y, POND.x, POND.y) < POND.r + 24) return false;
   if (trees.some(t => dist(x, y, t.x, t.y) < 40)) return false;
   if (towers.some(t => dist(x, y, t.x, t.y) < 42)) return false;
   return true;
@@ -1094,7 +1150,7 @@ function resetGame(){
   focusEnemy = null; aiming = null; rageT = 0; freezeFxT = 0; pending = [];
   for (const k of AKEYS) ABIL[k].cd = 0;
   tutDone();
-  genDecor(); drawBackground();
+  loadMap(currentMap);
   state = 'idle';
   showBanner('BUILD YOUR DEFENSE', 'The horde gathers in the cave…');
 }
@@ -1472,6 +1528,7 @@ function render(){
   if (shake > 0) ctx.translate(rand(-shake, shake), rand(-shake, shake));
 
   // pond shimmer
+  if (POND){
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
   for (let i = 0; i < 3; i++){
     const a = time*.7 + i*2.1;
@@ -1481,6 +1538,7 @@ function render(){
     ctx.stroke();
   }
   ctx.restore();
+  }
 
   // cloud shadows
   for (const c of clouds){
@@ -2060,12 +2118,11 @@ function loop(now){
 }
 
 // ---------- boot ----------
-genSpots();
-genDecor();
-drawBackground();
+loadMap(0);
 buildCards();
 buildAbils();
 syncCards();
+function showMainMenu(){
 showPanel(`
   <svg class="brandmark" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><linearGradient id="wkFoil" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffeeb0"/><stop offset="45%" stop-color="#f0c05a"/><stop offset="100%" stop-color="#b97b16"/></linearGradient><linearGradient id="wkDeep" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffe9a8"/><stop offset="55%" stop-color="#e9a93c"/><stop offset="100%" stop-color="#a86d12"/></linearGradient><linearGradient id="wkRing" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f7d98a"/><stop offset="100%" stop-color="#b9821f"/></linearGradient></defs><circle cx="256" cy="256" r="234" fill="none" stroke="url(#wkRing)" stroke-width="6"/><circle cx="256" cy="256" r="219" fill="none" stroke="url(#wkRing)" stroke-width="1.6" opacity=".55"/><g fill="url(#wkDeep)" opacity=".92"><circle cx="186" cy="196" r="46"/><circle cx="326" cy="196" r="46"/><circle cx="212" cy="136" r="44"/><circle cx="300" cy="136" r="44"/><circle cx="256" cy="112" r="50"/><circle cx="160" cy="238" r="30"/><circle cx="352" cy="238" r="30"/></g><g fill="url(#wkFoil)" stroke="#0a130c" stroke-width="7" stroke-linejoin="round"><path d="M208 182 L208 150 L234 150 L234 182 Z M243 182 L243 150 L269 150 L269 182 Z M278 182 L278 150 L304 150 L304 182 Z"/><path d="M214 202 L298 202 L306 390 L206 390 Z"/><path d="M198 182 L314 182 L310 204 L202 204 Z"/><path d="M196 390 L316 390 L324 408 L188 408 Z"/></g><path d="M238 408 L238 340 A18 18 0 0 1 274 340 L274 408 Z" fill="#0a130c"/><path d="M249 268 L249 240 A7 7 0 0 1 263 240 L263 268 Z" fill="#0a130c"/><g stroke="#0a130c" stroke-width="3" opacity=".5"><line x1="222" y1="244" x2="244" y2="244"/><line x1="268" y1="252" x2="290" y2="252"/><line x1="222" y1="300" x2="246" y2="300"/><line x1="266" y1="308" x2="290" y2="308"/><line x1="230" y1="352" x2="250" y2="352"/><line x1="264" y1="358" x2="284" y2="358"/></g><path d="M148 408 Q 256 432 364 408" fill="none" stroke="url(#wkRing)" stroke-width="5" stroke-linecap="round" opacity=".75"/></svg>
   <div class="title">WILDKEEP</div>
@@ -2081,14 +2138,46 @@ showPanel(`
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
     <span>Follow on X</span></a></div>
   <div class="ca">CA <span>COMING SOON</span></div>`);
-document.getElementById('playBtn').onclick = () => {
-  ac();
-  startMusic();
-  hidePanel();
-  state = 'idle';
-  showBanner('BUILD YOUR DEFENSE', 'The horde gathers in the cave…');
+document.getElementById('playBtn').onclick = () => { ac(); startMusic(); showMapSelect(); };
+}
+// ---------- map select ----------
+function drawMiniMap(cvs, m){
+  const c = cvs.getContext('2d'), sw = cvs.width, sh = cvs.height, sx = sw / W, sy = sh / H;
+  c.fillStyle = m.theme.grass[1]; c.fillRect(0, 0, sw, sh);
+  if (m.pond){ c.fillStyle = 'rgba(63,149,204,.9)';
+    c.beginPath(); c.ellipse(m.pond.x*sx, m.pond.y*sy, m.pond.r*sx*.85, m.pond.r*sy*.7, 0, 0, TAU); c.fill(); }
+  const pts = splinePoints(m.raw);
+  c.lineJoin = 'round'; c.lineCap = 'round';
+  const stroke = (col, w) => { c.strokeStyle = col; c.lineWidth = w;
+    c.beginPath(); c.moveTo(pts[0][0]*sx, pts[0][1]*sy);
+    for (let k = 1; k < pts.length; k++) c.lineTo(pts[k][0]*sx, pts[k][1]*sy); c.stroke(); };
+  stroke(m.theme.path[1], 13*sx); stroke(m.theme.path[2], 9.5*sx); stroke(m.theme.path[3], 3.5*sx);
+}
+function showMapSelect(){
+  const cards = MAPS.map((m, i) => `
+    <button class="mapcard" data-i="${i}">
+      <canvas class="mapmini" width="240" height="135"></canvas>
+      <div class="mapnm">${m.name}</div>
+      <div class="mapmeta"><span>${m.biome}</span><span class="mapdiff">${'★'.repeat(m.diff)}${'✩'.repeat(3-m.diff)}</span></div>
+    </button>`).join('');
+  showPanel(`
+    <div class="title" style="font-size:clamp(20px,3.6vw,34px);white-space:normal">CHOOSE YOUR MAP</div>
+    <div class="sub" style="margin-bottom:12px">EACH GROVE — A NEW BATTLE</div>
+    <div class="mapgrid">${cards}</div>
+    <button class="mapback" id="mapBack">← back</button>`);
+  document.querySelectorAll('.mapcard').forEach(btn => {
+    const i = +btn.dataset.i;
+    drawMiniMap(btn.querySelector('.mapmini'), MAPS[i]);
+    btn.onclick = () => { ac(); startWithMap(i); };
+  });
+  document.getElementById('mapBack').onclick = () => showMainMenu();
+}
+function startWithMap(i){
+  loadMap(i); hidePanel(); state = 'idle';
+  showBanner(MAPS[i].name, MAPS[i].biome + ' · defend the keep');
   if (!tutSeen){ tutSeen = true; tutStart(); }
-};
+}
+showMainMenu();
 requestAnimationFrame(loop);
 </script>
 </body>
