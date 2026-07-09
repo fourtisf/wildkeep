@@ -158,15 +158,16 @@
     50%{box-shadow:0 0 0 5px var(--gold),0 0 28px rgba(240,192,90,.85)}}
 
   /* ---------- overlays ---------- */
-  #overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;
-    justify-content:center;background:rgba(5,9,6,.72);backdrop-filter:blur(6px);}
+  #overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:flex-start;
+    justify-content:center;overflow-y:auto;overscroll-behavior:contain;padding:14px 12px;
+    background:rgba(5,9,6,.72);backdrop-filter:blur(6px);}
   #overlay.hide{display:none;}
+  #overlay::-webkit-scrollbar{width:8px;}
+  #overlay::-webkit-scrollbar-thumb{background:rgba(240,192,90,.35);border-radius:8px;}
   .panel{background:var(--glass);border:1px solid var(--line);border-radius:22px;
-    padding:clamp(18px,3.4vw,40px) clamp(24px,5vw,56px);text-align:center;color:var(--txt);
+    padding:clamp(16px,3vw,38px) clamp(24px,5vw,56px);text-align:center;color:var(--txt);
     box-shadow:0 20px 60px rgba(0,0,0,.6);max-width:min(92vw,560px);
-    max-height:92%;overflow-y:auto;overscroll-behavior:contain;animation:popin .25s ease;}
-  .panel::-webkit-scrollbar{width:8px;}
-  .panel::-webkit-scrollbar-thumb{background:rgba(240,192,90,.35);border-radius:8px;}
+    margin:auto;animation:popin .25s ease;}
   .title{font-size:clamp(28px,5.2vw,52px);font-weight:900;letter-spacing:.16em;margin:0 0 2px;
     padding-left:.16em;white-space:nowrap;background:linear-gradient(180deg,#ffe9a8,#e9a93c 60%,#a86d12);
     -webkit-background-clip:text;background-clip:text;color:transparent;
