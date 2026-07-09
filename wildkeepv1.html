@@ -183,7 +183,17 @@
   .mapcard{background:var(--glass);border:1px solid var(--line);border-radius:14px;padding:8px;cursor:pointer;
     color:var(--txt);text-align:left;transition:transform .12s,border-color .12s,box-shadow .12s;}
   .mapcard:hover{transform:translateY(-3px);border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 8px 22px rgba(0,0,0,.5);}
+  .mapthumb{position:relative;}
   .mapmini{width:100%;height:auto;border-radius:9px;display:block;border:1px solid rgba(0,0,0,.35);}
+  .mapbest{position:absolute;top:6px;left:6px;background:rgba(10,16,11,.8);color:var(--gold);
+    font-size:11px;font-weight:800;letter-spacing:.04em;padding:3px 8px;border-radius:8px;border:1px solid var(--line);}
+  .maplock{position:absolute;inset:0;border-radius:9px;background:rgba(6,10,7,.72);backdrop-filter:blur(2px);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;}
+  .maplock .lk{font-size:26px;}
+  .maplock .lh{font-size:11px;color:#cfd8c8;font-weight:700;line-height:1.35;letter-spacing:.02em;}
+  .mapcard.locked{cursor:default;}
+  .mapcard.locked:hover{transform:none;border-color:var(--line);box-shadow:0 6px 18px rgba(0,0,0,.4);}
+  .mapcard.locked .mapnm,.mapcard.locked .mapmeta{opacity:.5;}
   .mapnm{font-weight:900;letter-spacing:.05em;font-size:clamp(12px,1.6vw,15px);margin-top:7px;
     background:linear-gradient(180deg,#ffe9a8,#e9a93c);-webkit-background-clip:text;background-clip:text;color:transparent;}
   .mapmeta{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;
@@ -415,28 +425,28 @@ function startMusic(){
 // ---------- maps (each: a Catmull-Rom path + a biome theme) ----------
 const MAPS = [
   { name:'THE GROVE', biome:'Meadow', tag:'Gentle start', diff:1, pond:{ x:1185, y:128, r:66 },
-    hpF:1, spdF:1, goldF:1,
+    hpF:1, spdF:1, goldF:1, hazard:null,
     theme:{ prop:'leafy', water:'pond', grass:['#83bd60','#6fae52','#5c9c46'], mottle:['52,96,44','160,214,120'],
       path:['rgba(40,60,30,.35)','#8f6a44','#d3ab77','rgba(233,199,148,.85)'],
       tuft:'46,92,38', flowers:['#fff6d8','#ffd6e0','#ffe98a','#e8d5ff'], vignette:'6,14,8' },
     raw:[[-60,150],[170,150],[330,230],[395,365],[310,480],[350,585],[520,610],
       [665,520],[660,370],[770,255],[950,225],[1070,320],[1035,470],[1150,565],[1340,600]] },
   { name:'GOLDEN DUNES', biome:'Desert', tag:'Tougher foes', diff:2, pond:{ x:158, y:135, r:52 },
-    hpF:1.15, spdF:1.05, goldF:1.15,
+    hpF:1.15, spdF:1.05, goldF:1.15, hazard:'sandstorm',
     theme:{ prop:'cactus', water:'oasis', grass:['#e6c878','#d9b45f','#c99f49'], mottle:['150,110,40','245,225,150'],
       path:['rgba(90,60,20,.30)','#b3833f','#e6c07a','rgba(255,236,180,.85)'],
       tuft:'150,120,50', flowers:['#fff2c0','#ffd98a','#ffe0a0','#f7c96b'], vignette:'40,26,8' },
     raw:[[-60,140],[230,160],[380,320],[250,470],[400,590],[660,600],[780,440],
       [700,280],[880,190],[1090,240],[1150,410],[1010,520],[1150,600],[1360,520]] },
   { name:'FROSTFALL', biome:'Tundra', tag:'Icy & tanky', diff:3, pond:{ x:1130, y:150, r:70 },
-    hpF:1.3, spdF:1, goldF:1.3,
+    hpF:1.3, spdF:1, goldF:1.3, hazard:'ice',
     theme:{ prop:'pine', water:'ice', grass:['#dfeaf2','#c4d6e4','#a9c2d6'], mottle:['110,150,185','245,250,255'],
       path:['rgba(70,90,110,.32)','#8fa6b8','#c3d3de','rgba(240,248,255,.9)'],
       tuft:'150,170,190', flowers:['#ffffff','#d8ecff','#eaf6ff','#cfe6ff'], vignette:'20,34,50' },
     raw:[[-60,580],[220,560],[330,400],[240,250],[460,180],[660,270],[720,450],
       [920,470],[1040,330],[980,180],[1200,180],[1280,400],[1180,560],[1360,600]] },
   { name:'EMBERPATH', biome:'Volcanic', tag:'Fast & fiery', diff:3, pond:{ x:205, y:150, r:58 },
-    hpF:1.2, spdF:1.2, goldF:1.5,
+    hpF:1.2, spdF:1.2, goldF:1.5, hazard:'eruption',
     theme:{ prop:'dead', water:'lava', grass:['#3a3330','#2c2624','#211c1b'], mottle:['120,45,20','255,120,40'],
       path:['rgba(0,0,0,.5)','#5a3320','#7a4526','rgba(150,72,34,.9)'],
       tuft:'90,60,40', flowers:['#ff8a3c','#ffb861','#ff6a3c','#ffd08a'], vignette:'22,6,4' },
@@ -445,6 +455,30 @@ const MAPS = [
 ];
 let currentMap = 0;
 let RAW = MAPS[0].raw, THEME = MAPS[0].theme;
+
+// ---------- persistence (best scores + map unlocks) ----------
+const SAVE = { best: MAPS.map(() => 0), unlocked: 1 };
+function loadSave(){
+  try {
+    const s = JSON.parse(localStorage.getItem('wildkeep_save') || '{}');
+    if (Array.isArray(s.best)) for (let i = 0; i < MAPS.length; i++) SAVE.best[i] = s.best[i] || 0;
+    if (typeof s.unlocked === 'number') SAVE.unlocked = clamp(s.unlocked, 1, MAPS.length);
+  } catch(e){}
+}
+function persist(){
+  try { localStorage.setItem('wildkeep_save', JSON.stringify(SAVE)); } catch(e){}
+}
+function recordResult(){                      // called when a run ends
+  if (score > (SAVE.best[currentMap] || 0)) SAVE.best[currentMap] = score;
+  persist();
+}
+function tryUnlockNext(){                      // reaching wave 10 opens the next map
+  if (currentMap + 1 < MAPS.length && SAVE.unlocked < currentMap + 2){
+    SAVE.unlocked = currentMap + 2; persist();
+    showBanner('🗺 NEW MAP UNLOCKED', MAPS[currentMap + 1].name + ' is now open');
+  }
+}
+loadSave();
 
 // ---------- path (organic Catmull-Rom spline) ----------
 function catmull(p0, p1, p2, p3, t){
@@ -798,6 +832,27 @@ const clouds = [ { x:rand(0,W), y:rand(60,300), r:220, v:9 }, { x:rand(0,W), y:r
 let score = 0, combo = 0, comboT = 0, bestCombo = 0;
 let focusEnemy = null, aiming = null, rageT = 0, freezeFxT = 0;
 let pending = [];                       // enemies to add after the update pass (splitters)
+let hzT = 0, sandT = 0;                  // hazard timer + active sandstorm timer
+function resetHazard(){ const h = MAPS[currentMap].hazard; hzT = h ? rand(6, 10) : 0; sandT = 0; }
+function tickHazard(dt){
+  const h = MAPS[currentMap].hazard; if (!h) return;
+  if (sandT > 0) sandT -= dt;
+  hzT -= dt; if (hzT > 0) return;
+  if (h === 'sandstorm'){ sandT = 4.5; hzT = rand(13, 19); showBanner('🌪 SANDSTORM', 'Tower range cut for a moment'); SND.leak(); }
+  else if (h === 'eruption'){
+    hzT = rand(6, 10);
+    const p = pointAt(rand(TOTAL*.15, TOTAL*.85)); boom(p.x, p.y, 96); shake = Math.max(shake, 6);
+    fx.push({ kind:'flash', x:p.x, y:p.y, r:120, life:.3, maxL:.3, col:'255,140,50' });
+    for (const e of enemies){ if (e.dead) continue; const ep = pointAt(e.dist);
+      if (dist(p.x, p.y, ep.x, ep.y) <= 96) damageEnemy(e, 60 + wave*6); }
+  } else if (h === 'ice'){
+    hzT = rand(8, 12);
+    const p = pointAt(rand(TOTAL*.15, TOTAL*.85));
+    frostBurst(p.x, p.y); fx.push({ kind:'ring', x:p.x, y:p.y, r:6, max:150, life:.5, maxL:.5, col:'170,225,255' });
+    for (const e of enemies){ if (e.dead) continue; const ep = pointAt(e.dist);
+      if (dist(p.x, p.y, ep.x, ep.y) <= 150) applySlow(e, .4, 2.5); }
+  }
+}
 const ABIL = {
   meteor: { name:'Meteor', hot:'Q', icon:'☄', cd:0, max:16, aim:true },
   freeze: { name:'Freeze', hot:'W', icon:'❄', cd:0, max:20 },
@@ -1026,6 +1081,7 @@ function updateCombat(dt){
   if (freezeFxT > 0) freezeFxT -= dt;
   if (comboT > 0){ comboT -= dt; if (comboT <= 0) combo = 0; }
   if (focusEnemy && focusEnemy.dead) focusEnemy = null;
+  if (state === 'wave') tickHazard(dt);
   // spawning
   if (state === 'wave' && spawnQ.length){
     spawnT -= dt;
@@ -1073,9 +1129,10 @@ function updateCombat(dt){
 
   // towers
   const rateMul = rageT > 0 ? .62 : 1;
+  const rangeMul = sandT > 0 ? .7 : 1;    // sandstorm hazard shrinks range
   for (const t of towers){
     t.cd -= dt; t.flash -= dt; t.recoil = Math.max(0, t.recoil - dt*30); t.sparkT -= dt;
-    const range = tStat(t, 'range');
+    const range = tStat(t, 'range') * rangeMul;
     const inRange = e => { const p = pointAt(e.dist); return dist(t.x, t.y, p.x, p.y) <= range; };
     let target = null;
     // player focus-fire wins if that enemy is in range and hittable
@@ -1178,30 +1235,75 @@ function waveCleared(){
   gold += bonus;
   SND.clear();
   showBanner('WAVE ' + wave + ' CLEARED', '+' + bonus + ' gold');
+  if (wave === 10) tryUnlockNext();
   if (wave >= FINAL && !endless && !wonShown){ wonShown = true; victory(); return; }
   state = 'idle';
 }
+function endStatsLine(){
+  const pb = score >= (SAVE.best[currentMap] || 0);
+  return `Score <b style="color:var(--gold)">${score.toLocaleString()}</b> · best combo <b style="color:var(--gold)">${bestCombo}×</b>`
+    + (pb ? '<br><span style="color:#8fe08f;font-weight:700">★ NEW BEST on ' + MAPS[currentMap].name + '</span>'
+          : '<br><span style="opacity:.7">best on ' + MAPS[currentMap].name + ': ' + (SAVE.best[currentMap]||0).toLocaleString() + '</span>');
+}
 function gameOver(){
   state = 'over'; SND.over(); closePop(); placing = null; stage.classList.remove('placing');
+  const stats = endStatsLine(); recordResult();
   showPanel(`
     <div class="title" style="background:linear-gradient(180deg,#ffb0a6,#e05548 60%,#7d2018);-webkit-background-clip:text;background-clip:text;">DEFEAT</div>
     <div class="sub">THE KEEP HAS FALLEN</div>
-    <div class="score">You survived <b style="color:var(--gold)">${wave - 1}</b> wave${wave-1===1?'':'s'}.<br>Score <b style="color:var(--gold)">${score.toLocaleString()}</b> · best combo <b style="color:var(--gold)">${bestCombo}×</b></div>
-    <div class="row"><button class="btn gold big" id="againBtn">⟲ TRY AGAIN</button></div>`);
+    <div class="score">You survived <b style="color:var(--gold)">${wave - 1}</b> wave${wave-1===1?'':'s'}.<br>${stats}</div>
+    <div class="row"><button class="btn gold big" id="againBtn">⟲ TRY AGAIN</button><button class="btn big" id="shareBtn">𝕏 SHARE</button></div>
+    <button class="mapback" id="toMenuBtn" style="margin-top:8px">← maps &amp; menu</button>`);
   document.getElementById('againBtn').onclick = () => { hidePanel(); resetGame(); };
+  document.getElementById('shareBtn').onclick = () => shareScore(false);
+  document.getElementById('toMenuBtn').onclick = () => { state = 'menu'; showMapSelect(); };
 }
 function victory(){
   state = 'won'; SND.win(); closePop();
+  const stats = endStatsLine(); recordResult();
   showPanel(`
     <div class="title">VICTORY</div>
     <div class="sub">THE GROVE IS SAFE</div>
-    <div class="score">All <b style="color:var(--gold)">${FINAL}</b> waves repelled with <b style="color:var(--red)">${lives}♥</b> remaining.<br>Score <b style="color:var(--gold)">${score.toLocaleString()}</b> · best combo <b style="color:var(--gold)">${bestCombo}×</b></div>
+    <div class="score">All <b style="color:var(--gold)">${FINAL}</b> waves repelled with <b style="color:var(--red)">${lives}♥</b> remaining.<br>${stats}</div>
     <div class="row">
-      <button class="btn gold big" id="endlessBtn">∞ ENDLESS MODE</button>
+      <button class="btn gold big" id="endlessBtn">∞ ENDLESS</button>
       <button class="btn big" id="again2Btn">⟲ RESTART</button>
-    </div>`);
+      <button class="btn big" id="shareBtn2">𝕏 SHARE</button>
+    </div>
+    <button class="mapback" id="toMenuBtn2" style="margin-top:8px">← maps &amp; menu</button>`);
   document.getElementById('endlessBtn').onclick = () => { endless = true; state = 'idle'; hidePanel(); showBanner('ENDLESS MODE', 'How long can you hold?'); };
   document.getElementById('again2Btn').onclick = () => { hidePanel(); resetGame(); };
+  document.getElementById('shareBtn2').onclick = () => shareScore(true);
+  document.getElementById('toMenuBtn2').onclick = () => { state = 'menu'; showMapSelect(); };
+}
+function shareScore(won){
+  const c = document.createElement('canvas'); c.width = 1200; c.height = 675;
+  const g = c.getContext('2d'), m = MAPS[currentMap];
+  const bg = g.createLinearGradient(0, 0, 0, 675);
+  bg.addColorStop(0, '#12241a'); bg.addColorStop(1, '#070b08');
+  g.fillStyle = bg; g.fillRect(0, 0, 1200, 675);
+  g.fillStyle = m.theme.grass[1]; g.globalAlpha = .16; g.fillRect(0, 300, 1200, 375); g.globalAlpha = 1;
+  g.strokeStyle = 'rgba(240,192,90,.55)'; g.lineWidth = 4; g.strokeRect(22, 22, 1156, 631);
+  g.textAlign = 'center';
+  g.fillStyle = '#f0c05a'; g.font = '900 66px Georgia, serif'; g.fillText('WILDKEEP', 600, 128);
+  g.fillStyle = '#b9c4ae'; g.font = '700 22px system-ui'; g.fillText('DEFENSE OF THE GROVE', 600, 162);
+  g.fillStyle = won ? '#8fe08f' : '#ff8a7a'; g.font = '800 32px system-ui';
+  g.fillText(won ? '⚔ GROVE DEFENDED' : '☠ THE KEEP FELL', 600, 236);
+  g.fillStyle = '#e8d29a'; g.font = '700 27px system-ui'; g.fillText(m.name + ' · ' + m.biome, 600, 284);
+  g.fillStyle = '#ffe9a8'; g.font = '900 132px system-ui'; g.fillText(score.toLocaleString(), 600, 448);
+  g.fillStyle = '#9aa694'; g.font = '700 24px system-ui'; g.fillText('SCORE', 600, 486);
+  g.fillStyle = '#e7eedd'; g.font = '700 30px system-ui';
+  g.fillText('Wave ' + (won ? FINAL : wave - 1) + '   ·   Best combo ' + bestCombo + '×', 600, 556);
+  g.fillStyle = '#231803'; g.fillRect(470, 596, 260, 46);
+  g.fillStyle = '#ffd77d'; g.fillRect(468, 594, 264, 46);
+  g.fillStyle = '#231803'; g.font = '900 28px system-ui'; g.fillText('▶ wildkeep.fun', 600, 626);
+  c.toBlob(blob => {
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = 'wildkeep-score.png'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  });
+  const txt = encodeURIComponent(`I scored ${score.toLocaleString()} on ${m.name} in WILDKEEP 🏰${won ? ' — GROVE DEFENDED! ⚔️' : ''}\n\nFree browser tower-defense 👉 wildkeep.fun\n@Wildkeepfun`);
+  window.open('https://twitter.com/intent/tweet?text=' + txt, '_blank');
 }
 function resetGame(){
   gold = 300; lives = 20; wave = 0; endless = false; wonShown = false;
@@ -1212,6 +1314,7 @@ function resetGame(){
   for (const k of AKEYS) ABIL[k].cd = 0;
   tutDone();
   loadMap(currentMap);
+  resetHazard();
   state = 'idle';
   showBanner('BUILD YOUR DEFENSE', 'The horde gathers in the cave…');
 }
@@ -1827,6 +1930,14 @@ function render(){
 
   ctx.restore(); // shake
 
+  // sandstorm haze (Dunes hazard)
+  if (sandT > 0){
+    const a = Math.min(.34, sandT*.09);
+    ctx.fillStyle = `rgba(214,180,110,${a})`; ctx.fillRect(0, 0, W, H);
+    ctx.save(); ctx.globalAlpha = a*1.6; ctx.strokeStyle = 'rgba(240,220,170,.5)'; ctx.lineWidth = 2;
+    for (let i = 0; i < 22; i++){ const yy = (i*46 + time*420) % H; ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(W, yy - 60); ctx.stroke(); }
+    ctx.restore();
+  }
   // freeze / rage full-screen tints
   if (freezeFxT > 0){ ctx.fillStyle = `rgba(150,210,255,${Math.min(.28, freezeFxT*.11)})`; ctx.fillRect(0, 0, W, H); }
   if (rageT > 0){
@@ -2226,12 +2337,17 @@ function drawMiniMap(cvs, m){
   stroke(m.theme.path[3], 3.2*sx);    // worn center
 }
 function showMapSelect(){
-  const cards = MAPS.map((m, i) => `
-    <button class="mapcard" data-i="${i}">
-      <canvas class="mapmini" width="480" height="270"></canvas>
+  const cards = MAPS.map((m, i) => {
+    const locked = i >= SAVE.unlocked;
+    const best = SAVE.best[i] > 0 ? `<div class="mapbest">★ ${SAVE.best[i].toLocaleString()}</div>` : '';
+    const lock = locked ? `<div class="maplock"><span class="lk">🔒</span><span class="lh">Reach wave 10 on<br>${MAPS[i-1].name}</span></div>` : '';
+    return `
+    <button class="mapcard${locked ? ' locked' : ''}" data-i="${i}"${locked ? ' disabled' : ''}>
+      <div class="mapthumb"><canvas class="mapmini" width="480" height="270"></canvas>${best}${lock}</div>
       <div class="mapnm">${m.name}</div>
       <div class="mapmeta"><span>${m.biome} · ${m.tag}</span><span class="mapdiff">${'★'.repeat(m.diff)}<span class="doff">${'✩'.repeat(3-m.diff)}</span></span></div>
-    </button>`).join('');
+    </button>`;
+  }).join('');
   showPanel(`
     <div class="title" style="font-size:clamp(20px,3.6vw,34px);white-space:normal">CHOOSE YOUR MAP</div>
     <div class="sub" style="margin-bottom:12px">EACH GROVE — A NEW BATTLE</div>
@@ -2240,12 +2356,12 @@ function showMapSelect(){
   document.querySelectorAll('.mapcard').forEach(btn => {
     const i = +btn.dataset.i;
     drawMiniMap(btn.querySelector('.mapmini'), MAPS[i]);
-    btn.onclick = () => { ac(); startWithMap(i); };
+    if (i < SAVE.unlocked) btn.onclick = () => { ac(); startWithMap(i); };
   });
   document.getElementById('mapBack').onclick = () => showMainMenu();
 }
 function startWithMap(i){
-  loadMap(i); hidePanel(); state = 'idle';
+  loadMap(i); resetGame(); hidePanel(); state = 'idle';
   showBanner(MAPS[i].name, MAPS[i].biome + ' · defend the keep');
   if (!tutSeen){ tutSeen = true; tutStart(); }
 }
