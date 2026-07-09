@@ -94,6 +94,30 @@
   #upgBtn:disabled{background:#2c332c;color:#788072;cursor:default;}
   #sellBtn{background:#3a2320;color:#ffb0a6;border:1px solid rgba(255,106,94,.35);}
   .popBtns button:hover:not(:disabled){filter:brightness(1.15);}
+  .priobtn{width:100%;margin:2px 0 7px;border:1px solid var(--line);border-radius:9px;
+    padding:7px 6px;font-weight:800;font-size:11px;letter-spacing:.03em;cursor:pointer;
+    background:rgba(240,192,90,.12);color:var(--gold);}
+  .priobtn:hover{filter:brightness(1.25);}
+
+  /* ---------- ability bar ---------- */
+  #abils{position:absolute;left:12px;bottom:12px;display:flex;gap:9px;z-index:5;}
+  .abil{position:relative;width:clamp(50px,6.4vw,66px);height:clamp(50px,6.4vw,66px);
+    border-radius:14px;border:1px solid var(--line);background:var(--glass);color:var(--txt);
+    cursor:pointer;backdrop-filter:blur(8px);box-shadow:0 6px 18px rgba(0,0,0,.4);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;overflow:hidden;
+    transition:transform .12s, border-color .12s, filter .12s;}
+  .abil:hover{transform:translateY(-3px);border-color:var(--gold);}
+  .abil.ready{border-color:rgba(240,192,90,.7);animation:apulse 1.8s ease-in-out infinite;}
+  @keyframes apulse{0%,100%{box-shadow:0 6px 18px rgba(0,0,0,.4)}50%{box-shadow:0 0 0 3px rgba(240,192,90,.25),0 6px 18px rgba(0,0,0,.4)}}
+  .abil.armed{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 6px 18px rgba(0,0,0,.5);}
+  .abil .ai{font-size:clamp(18px,2.4vw,24px);line-height:1;}
+  .abil .an{font-size:9px;font-weight:800;letter-spacing:.06em;opacity:.85;}
+  .abil .ak{position:absolute;top:3px;right:5px;font-size:8px;opacity:.5;font-weight:700;}
+  .abil .cov{position:absolute;inset:0;background:conic-gradient(rgba(6,10,7,.78) var(--deg,0deg),transparent 0);
+    pointer-events:none;}
+  .abil .cd{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:15px;color:#ffe6a6;pointer-events:none;}
+  .abil.off{filter:grayscale(.5) brightness(.7);}
 
   /* ---------- next wave confirm ---------- */
   #nextWave{position:absolute;left:50%;top:62px;transform:translateX(-50%);z-index:6;
@@ -172,6 +196,7 @@
     <div class="cluster">
       <div class="pill"><span class="coin"></span><span id="goldVal">300</span></div>
       <div class="pill" id="lifePill"><span class="heart">♥</span><span id="livesVal">20</span></div>
+      <div class="pill" id="scorePill">★ <span id="scoreVal">0</span></div>
     </div>
     <div class="cluster">
       <div class="pill" id="waveVal">WAVE 1/20</div>
@@ -189,9 +214,12 @@
 
   <div id="dock"></div>
 
+  <div id="abils"></div>
+
   <div id="pop">
     <div id="popName"><span id="popNm"></span><span id="popPips"></span></div>
     <div id="popStats"></div>
+    <button id="prioBtn" class="priobtn"></button>
     <div class="popBtns"><button id="upgBtn"></button><button id="sellBtn"></button></div>
   </div>
 
@@ -640,18 +668,72 @@ const banner = { txt:'', sub:'', t:0, max:1 };
 const pollen = Array.from({length:26}, () => ({ x:rand(0,W), y:rand(0,H), vx:rand(4,14), vy:rand(-6,6), s:rand(1,2.4), tw:rand(0,TAU) }));
 const clouds = [ { x:rand(0,W), y:rand(60,300), r:220, v:9 }, { x:rand(0,W), y:rand(300,600), r:280, v:6 } ];
 
+// ---------- engagement systems: abilities, combo, focus, enemy traits ----------
+let score = 0, combo = 0, comboT = 0, bestCombo = 0;
+let focusEnemy = null, aiming = null, rageT = 0, freezeFxT = 0;
+let pending = [];                       // enemies to add after the update pass (splitters)
+const ABIL = {
+  meteor: { name:'Meteor', hot:'Q', icon:'☄', cd:0, max:16, aim:true },
+  freeze: { name:'Freeze', hot:'W', icon:'❄', cd:0, max:20 },
+  rage:   { name:'Rally',  hot:'E', icon:'🔥', cd:0, max:24 },
+};
+const AKEYS = ['meteor','freeze','rage'];
+function comboMult(){ return 1 + Math.min(2, Math.floor(combo / 5) * .5); }   // x1 → x3
+function canHit(type, e){ return !(type === 'cannon' && e.fly); }            // cannonballs pass under flyers
+function addKill(e){
+  const mult = comboMult();
+  const g = Math.round(e.gold * mult);
+  gold += g; score += Math.round((e.score || e.gold) * 10 * mult);
+  combo++; comboT = 2.6; if (combo > bestCombo) bestCombo = combo;
+  const p = pointAt(e.dist);
+  addText(p.x, p.y - e.r - 8, '+' + g + (mult > 1 ? '  x' + mult : ''));
+}
+function useAbility(k){
+  const a = ABIL[k]; if (!a || a.cd > 0 || state !== 'wave') return;
+  if (k === 'meteor'){ aiming = 'meteor'; stage.classList.add('placing'); closePop(); return; }
+  if (k === 'freeze'){
+    for (const e of enemies) applySlow(e, .12, 3);
+    freezeFxT = 3; a.cd = a.max; SND.frost();
+    fx.push({ kind:'flash', x:W/2, y:H/2, r:900, life:.4, maxL:.4, col:'170,225,255' });
+    showBanner('❄ FREEZE', 'The horde is locked in ice');
+  } else if (k === 'rage'){
+    rageT = 6; a.cd = a.max; SND.upg();
+    showBanner('🔥 RALLY', 'Every tower empowered');
+  }
+}
+function castMeteor(x, y){
+  const a = ABIL.meteor; a.cd = a.max; aiming = null; stage.classList.remove('placing');
+  const R = 130, DMG = 200 + wave * 12;
+  fx.push({ kind:'flash', x, y, r:R*1.25, life:.32, maxL:.32, col:'255,150,60' });
+  boom(x, y, R); shake = Math.max(shake, 9);
+  spark(x, y, '255,120,40', 26, 240, .6, 6, 120);
+  for (const e of enemies){
+    if (e.dead) continue;
+    const p = pointAt(e.dist), d = dist(x, y, p.x, p.y);
+    if (d <= R) damageEnemy(e, Math.round(DMG * (1 - .4 * d / R)));
+  }
+  SND.cannon();
+}
+
 // ---------- entity helpers ----------
 function showBanner(txt, sub = '', dur = 1.9){ banner.txt = txt; banner.sub = sub; banner.t = dur; banner.max = dur; }
 function addText(x, y, txt, col = '#ffd76a', size = 15){ texts.push({ x, y, txt, col, size, life:.9, max:.9 }); }
 
-function makeEnemy(type){
+function makeEnemy(type, mods = {}){
   const d = EDEF[type];
-  return {
-    type, r: d.r,
-    hp: Math.round(d.hp * hpMult(wave)), maxHp: Math.round(d.hp * hpMult(wave)),
-    spd: d.spd * spdMult(wave), gold: d.gold + Math.floor(wave/4) * (type==='boss'?4:1),
-    dmgL: d.dmgL, dist: 0, slowT: 0, slowF: 1, seed: rand(0,TAU), age: 0, flash: 0, dead: false,
+  const hp = Math.round(d.hp * hpMult(wave) * (mods.hpF || 1));
+  const e = {
+    type, r: d.r * (mods.rF || 1),
+    hp, maxHp: hp,
+    spd: d.spd * spdMult(wave) * (mods.spdF || 1),
+    gold: Math.round((d.gold + Math.floor(wave/4) * (type==='boss'?4:1)) * (mods.goldF || 1)),
+    dmgL: d.dmgL, dist: mods.dist || 0, slowT: 0, slowF: 1, seed: rand(0,TAU), age: 0, flash: 0, dead: false,
+    // traits
+    shield: 0, maxShield: 0, split: !!mods.split, heal: !!mods.heal, fly: !!mods.fly, healT: rand(0,1),
   };
+  e.score = e.gold;
+  if (mods.shield){ e.maxShield = Math.round(hp * mods.shield); e.shield = e.maxShield; }
+  return e;
 }
 function buildQueue(w){
   const q = [];
@@ -661,21 +743,41 @@ function buildQueue(w){
   for (let i = 0; i < gob; i++) q.push({ type:'goblin', gap: Math.max(.42, .78 - w*.012) });
   for (let i = 0; i < run; i++) q.push({ type:'runner', gap:.55 });
   for (let i = 0; i < bru; i++) q.push({ type:'brute',  gap:1.15 });
+  // ---- special enemies with traits (ramp in over the waves) ----
+  const flyers   = w >= 6 ? 2 + Math.floor((w-6)/2) : 0;   // dodge cannons
+  const splitters= w >= 5 ? 1 + Math.floor((w-5)/3) : 0;   // split on death
+  const healers  = w >= 7 ? 1 + Math.floor((w-7)/4) : 0;   // heal the pack
+  for (let i = 0; i < flyers; i++)    q.push({ type:'runner', mods:{ fly:true, hpF:.9, goldF:1.4 }, gap:.6 });
+  for (let i = 0; i < splitters; i++) q.push({ type:'brute',  mods:{ split:true, hpF:.7, rF:.9, goldF:1.2 }, gap:1.1 });
+  for (let i = 0; i < healers; i++)   q.push({ type:'goblin', mods:{ heal:true, hpF:1.6, rF:1.25, spdF:.8, goldF:1.6 }, gap:1 });
+  // shielded goblins from wave 3
+  if (w >= 3){ const sh = 2 + Math.floor(w/3); for (let i = 0; i < sh; i++) q.push({ type:'goblin', mods:{ shield:.8, goldF:1.3 }, gap:.5 }); }
   for (let i = q.length - 1; i > 0; i--){ const j = irand(0, i); [q[i], q[j]] = [q[j], q[i]]; }
-  if (w % 5 === 0) for (let i = 0; i < (w >= FINAL ? 2 : 1); i++) q.push({ type:'boss', gap:1.6 });
+  if (w % 5 === 0) for (let i = 0; i < (w >= FINAL ? 2 : 1); i++) q.push({ type:'boss', mods:{ shield:.5 }, gap:1.6 });
   return q;
 }
 
 function damageEnemy(e, dmg){
   if (e.dead) return;
+  if (e.shield > 0){                       // shield soaks damage first
+    const a = Math.min(e.shield, dmg); e.shield -= a; dmg -= a;
+    e.flash = .09;
+    if (dmg <= 0) return;
+  }
   e.hp -= dmg; e.flash = .09;
   if (e.hp <= 0){
     e.dead = true;
-    gold += e.gold;
     const p = pointAt(e.dist);
-    addText(p.x, p.y - e.r - 8, '+' + e.gold);
+    addKill(e);
     deathBurst(p.x, p.y, e);
     SND.die(); SND.coin();
+    if (e === focusEnemy) focusEnemy = null;
+    if (e.split){                          // splitter bursts into two runts
+      for (let k = 0; k < 2; k++){
+        const c = makeEnemy('goblin', { dist: clamp(e.dist + rand(-14, 14), 0, TOTAL - 1), hpF:.55, rF:.85, goldF:.4, spdF:1.15 });
+        pending.push(c);
+      }
+    }
   }
 }
 function applySlow(e, f, dur){ if (f < e.slowF || e.slowT <= 0) e.slowF = f; e.slowT = Math.max(e.slowT, dur); }
@@ -734,7 +836,7 @@ function canPlace(x, y){
 }
 function placeTower(key, x, y){
   const d = TDEF[key];
-  towers.push({ type:key, x, y, lvl:1, cd:rand(0,.2), angle:rand(0,TAU), flash:0, recoil:0, spent:d.cost, sparkT:rand(0,2) });
+  towers.push({ type:key, x, y, lvl:1, cd:rand(0,.2), angle:rand(0,TAU), flash:0, recoil:0, spent:d.cost, sparkT:rand(0,2), prio:'first' });
   gold -= d.cost;
   SND.place();
   spark(x, y, '230,220,190', 8, 80, .4, 3, 90);
@@ -746,8 +848,9 @@ function fireTower(t, target){
   const d = TDEF[t.type];
   t.flash = .09;
   const s = 1 + (t.lvl - 1) * .1;
+  const rageMul = rageT > 0 ? 1.6 : 1;
   if (t.type === 'tesla'){
-    const hit = [target]; let dmg = tStat(t,'dmg');
+    const hit = [target]; let dmg = tStat(t,'dmg') * rageMul;
     let last = target;
     const maxChain = d.chain[t.lvl-1];
     while (hit.length < maxChain){
@@ -780,7 +883,7 @@ function fireTower(t, target){
   else { const len = t.type === 'cannon' ? 24*s : 16*s; ox = t.x + Math.cos(t.angle)*len; oy = t.y + Math.sin(t.angle)*len; }
   const spd = t.type === 'archer' ? 560 : t.type === 'cannon' ? 300 : 380;
   projs.push({ type:t.type, x:ox, y:oy, tgt:target, lx:ox, ly:oy, spd,
-    dmg:tStat(t,'dmg'),
+    dmg:tStat(t,'dmg') * rageMul,
     splash: d.splash ? d.splash[t.lvl-1] : 0,
     slow: d.slow ? d.slow[t.lvl-1] : 0, slowDur: d.slowDur || 0,
     trail: 0 });
@@ -791,12 +894,18 @@ function fireTower(t, target){
 
 // ---------- updates ----------
 function updateCombat(dt){
+  // ability cooldowns & timers (real progression tied to game speed)
+  for (const k of AKEYS){ if (ABIL[k].cd > 0) ABIL[k].cd = Math.max(0, ABIL[k].cd - dt); }
+  if (rageT > 0) rageT -= dt;
+  if (freezeFxT > 0) freezeFxT -= dt;
+  if (comboT > 0){ comboT -= dt; if (comboT <= 0) combo = 0; }
+  if (focusEnemy && focusEnemy.dead) focusEnemy = null;
   // spawning
   if (state === 'wave' && spawnQ.length){
     spawnT -= dt;
     if (spawnT <= 0){
       const it = spawnQ.shift();
-      enemies.push(makeEnemy(it.type));
+      enemies.push(makeEnemy(it.type, it.mods));
       spawnT = it.gap;
       if (it.type === 'boss'){ showBanner('⚠ BOSS', 'A massive foe approaches'); SND.wave(); }
     }
@@ -807,9 +916,23 @@ function updateCombat(dt){
     e.age += dt; e.flash -= dt;
     if (e.slowT > 0){ e.slowT -= dt; if (e.slowT <= 0) e.slowF = 1; }
     e.dist += e.spd * (e.slowT > 0 ? e.slowF : 1) * dt;
+    if (e.heal){                          // healers mend the pack around them
+      e.healT -= dt;
+      if (e.healT <= 0){
+        e.healT = 1.3; const hp0 = pointAt(e.dist);
+        for (const o of enemies){
+          if (o === e || o.dead || o.hp >= o.maxHp) continue;
+          const op = pointAt(o.dist);
+          if (dist(hp0.x, hp0.y, op.x, op.y) < 140){ o.hp = Math.min(o.maxHp, o.hp + o.maxHp * .12); o.flash = .06; }
+        }
+        fx.push({ kind:'ring', x:hp0.x, y:hp0.y, r:6, max:140, life:.5, maxL:.5, col:'120,240,150' });
+      }
+    }
     if (e.dist >= TOTAL){
       e.dead = true;
       lives -= e.dmgL; flashRed = .55; shake = Math.max(shake, 4);
+      combo = 0; comboT = 0;              // a leak breaks your streak
+      if (e === focusEnemy) focusEnemy = null;
       SND.leak();
       const lp = document.getElementById('lifePill');
       lp.classList.remove('hurt'); void lp.offsetWidth; lp.classList.add('hurt');
@@ -823,18 +946,33 @@ function updateCombat(dt){
   enemies = enemies.filter(e => !e.dead);
 
   // towers
+  const rateMul = rageT > 0 ? .62 : 1;
   for (const t of towers){
     t.cd -= dt; t.flash -= dt; t.recoil = Math.max(0, t.recoil - dt*30); t.sparkT -= dt;
     const range = tStat(t, 'range');
-    let target = null, best = -1;
-    for (const e of enemies){
-      const p = pointAt(e.dist);
-      if (dist(t.x, t.y, p.x, p.y) <= range && e.dist > best){ best = e.dist; target = e; }
+    const inRange = e => { const p = pointAt(e.dist); return dist(t.x, t.y, p.x, p.y) <= range; };
+    let target = null;
+    // player focus-fire wins if that enemy is in range and hittable
+    if (focusEnemy && !focusEnemy.dead && canHit(t.type, focusEnemy) && inRange(focusEnemy)) target = focusEnemy;
+    if (!target){
+      let bestVal = -Infinity;
+      for (const e of enemies){
+        if (e.dead || !canHit(t.type, e) || !inRange(e)) continue;
+        const p = pointAt(e.dist);
+        let val;
+        switch (t.prio){
+          case 'last':   val = -e.dist; break;
+          case 'strong': val = e.hp + e.shield; break;
+          case 'close':  val = -dist(t.x, t.y, p.x, p.y); break;
+          default:       val = e.dist;              // 'first' — furthest along the path
+        }
+        if (val > bestVal){ bestVal = val; target = e; }
+      }
     }
     if (target){
       const p = pointAt(target.dist);
       t.angle = angLerp(t.angle, Math.atan2(p.y - t.y, p.x - t.x), Math.min(1, dt*14));
-      if (t.cd <= 0){ fireTower(t, target); t.cd = tStat(t, 'rate'); }
+      if (t.cd <= 0){ fireTower(t, target); t.cd = tStat(t, 'rate') * rateMul; }
     }
     if (t.type === 'tesla' && t.sparkT <= 0){
       t.sparkT = rand(.6, 1.6);
@@ -853,7 +991,7 @@ function updateCombat(dt){
       if (pr.type === 'cannon'){
         boom(pr.lx, pr.ly, pr.splash);
         for (const e of enemies){
-          if (e.dead) continue;
+          if (e.dead || e.fly) continue;      // cannonballs pass under flyers
           const p = pointAt(e.dist), r = dist(pr.lx, pr.ly, p.x, p.y);
           if (r <= pr.splash) damageEnemy(e, Math.round(pr.dmg * (1 - .5 * r / pr.splash)));
         }
@@ -874,6 +1012,9 @@ function updateCombat(dt){
       parts.push({ x:pr.x, y:pr.y, vx:rand(-12,12), vy:rand(-12,12), g:0, life:.28, max:.28, size:rand(1.5,3), col:'180,230,255', mode:'glow' }); }
   }
   projs = projs.filter(p => !p.hit);
+
+  // add any splitter spawns produced this frame
+  if (pending.length){ for (const c of pending) enemies.push(c); pending = []; }
 
   // wave cleared?
   if (state === 'wave' && !spawnQ.length && !enemies.length) waveCleared();
@@ -919,7 +1060,7 @@ function gameOver(){
   showPanel(`
     <div class="title" style="background:linear-gradient(180deg,#ffb0a6,#e05548 60%,#7d2018);-webkit-background-clip:text;background-clip:text;">DEFEAT</div>
     <div class="sub">THE KEEP HAS FALLEN</div>
-    <div class="score">You survived <b style="color:var(--gold)">${wave - 1}</b> wave${wave-1===1?'':'s'}.<br>The wilds remember your stand.</div>
+    <div class="score">You survived <b style="color:var(--gold)">${wave - 1}</b> wave${wave-1===1?'':'s'}.<br>Score <b style="color:var(--gold)">${score.toLocaleString()}</b> · best combo <b style="color:var(--gold)">${bestCombo}×</b></div>
     <div class="row"><button class="btn gold big" id="againBtn">⟲ TRY AGAIN</button></div>`);
   document.getElementById('againBtn').onclick = () => { hidePanel(); resetGame(); };
 }
@@ -928,7 +1069,7 @@ function victory(){
   showPanel(`
     <div class="title">VICTORY</div>
     <div class="sub">THE GROVE IS SAFE</div>
-    <div class="score">All <b style="color:var(--gold)">${FINAL}</b> waves repelled with <b style="color:var(--red)">${lives}♥</b> remaining.<br>The horde retreats… for now.</div>
+    <div class="score">All <b style="color:var(--gold)">${FINAL}</b> waves repelled with <b style="color:var(--red)">${lives}♥</b> remaining.<br>Score <b style="color:var(--gold)">${score.toLocaleString()}</b> · best combo <b style="color:var(--gold)">${bestCombo}×</b></div>
     <div class="row">
       <button class="btn gold big" id="endlessBtn">∞ ENDLESS MODE</button>
       <button class="btn big" id="again2Btn">⟲ RESTART</button>
@@ -940,6 +1081,9 @@ function resetGame(){
   gold = 300; lives = 20; wave = 0; endless = false; wonShown = false;
   enemies = []; towers = []; projs = []; parts = []; fx = []; texts = []; spawnQ = [];
   placing = null; selTower = null; stage.classList.remove('placing');
+  score = 0; combo = 0; comboT = 0; bestCombo = 0;
+  focusEnemy = null; aiming = null; rageT = 0; freezeFxT = 0; pending = [];
+  for (const k of AKEYS) ABIL[k].cd = 0;
   tutDone();
   genDecor(); drawBackground();
   state = 'idle';
@@ -960,10 +1104,20 @@ function evtPos(e){
 }
 cv.addEventListener('pointermove', e => { const p = evtPos(e); mouse.x = p.x; mouse.y = p.y; mouse.in = true; });
 cv.addEventListener('pointerleave', () => mouse.in = false);
+function enemyAt(x, y){
+  let best = null, bd = 1e9;
+  for (const e of enemies){
+    if (e.dead) continue;
+    const p = pointAt(e.dist), dd = dist(x, y, p.x, p.y);
+    if (dd < e.r + 16 && dd < bd){ bd = dd; best = e; }
+  }
+  return best;
+}
 cv.addEventListener('pointerdown', e => {
   const p = evtPos(e); mouse.x = p.x; mouse.y = p.y; mouse.in = true;
   ac();
   if (state === 'menu' || state === 'over' || state === 'won') return;
+  if (aiming === 'meteor'){ castMeteor(p.x, p.y); return; }   // spell targeting
   if (placing){
     if (canPlace(p.x, p.y)){
       if (gold >= TDEF[placing].cost){
@@ -974,7 +1128,15 @@ cv.addEventListener('pointerdown', e => {
     return;
   }
   const t = towerAt(p.x, p.y);
-  if (t) openPop(t); else closePop();
+  if (t){ openPop(t); return; }
+  const en = enemyAt(p.x, p.y);          // tap an enemy → focus-fire it
+  if (en){
+    focusEnemy = (focusEnemy === en) ? null : en;
+    if (focusEnemy) addText(p.x, p.y - en.r - 8, '🎯 FOCUS', '#ffd76a', 13);
+    closePop();
+    return;
+  }
+  focusEnemy = null; closePop();
 });
 cv.addEventListener('contextmenu', e => { e.preventDefault(); cancelPlacing(); closePop(); });
 window.addEventListener('keydown', e => {
@@ -982,8 +1144,12 @@ window.addEventListener('keydown', e => {
   if (e.key === ' '){ e.preventDefault(); if (state === 'idle') startWave(); }
   const i = ['1','2','3','4'].indexOf(e.key);
   if (i >= 0) togglePlacing(TKEYS[i]);
+  const k = e.key.toLowerCase();
+  if (k === 'q') useAbility('meteor');
+  if (k === 'w') useAbility('freeze');
+  if (k === 'e') useAbility('rage');
 });
-function cancelPlacing(){ placing = null; stage.classList.remove('placing'); syncCards(); }
+function cancelPlacing(){ placing = null; aiming = null; stage.classList.remove('placing'); syncCards(); }
 function togglePlacing(key){
   if (state === 'menu' || state === 'over' || state === 'won') return;
   closePop();
@@ -1023,7 +1189,16 @@ function refreshPop(){
   if (t.lvl < 3){ upg.disabled = gold < d.upg[t.lvl-1]; upg.textContent = '⬆ UPGRADE ' + d.upg[t.lvl-1]; }
   else { upg.disabled = true; upg.textContent = 'MAX LEVEL'; }
   document.getElementById('sellBtn').textContent = 'SELL +' + Math.floor(t.spent * .7);
+  document.getElementById('prioBtn').textContent = '🎯 TARGET: ' + PRIO_LABEL[t.prio || 'first'];
 }
+const PRIO_ORDER = ['first','last','strong','close'];
+const PRIO_LABEL = { first:'FIRST', last:'LAST', strong:'STRONGEST', close:'CLOSEST' };
+document.getElementById('prioBtn').onclick = () => {
+  const t = selTower; if (!t) return;
+  const i = PRIO_ORDER.indexOf(t.prio || 'first');
+  t.prio = PRIO_ORDER[(i + 1) % PRIO_ORDER.length];
+  refreshPop();
+};
 function positionPop(t){
   // use layout (untransformed) size; separate x/y scale so it works under the fill stretch + rotation
   const lw = cv.offsetWidth, lh = cv.offsetHeight, scx = lw / W, scy = lh / H;
@@ -1315,6 +1490,47 @@ function render(){
   list.sort((a, b) => a.y - b.y);
   for (const it of list) it.f();
 
+  // enemy trait overlays (shield / heal aura / flyer / focus marker)
+  for (const e of enemies){
+    if (e.dead) continue;
+    const p = pointAt(e.dist);
+    if (e.fly){                                   // shadow below + hover lift cue
+      ctx.fillStyle = 'rgba(0,0,0,.22)';
+      ctx.beginPath(); ctx.ellipse(p.x, p.y + e.r*1.15, e.r*.9, e.r*.34, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(200,225,255,.5)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(p.x - e.r, p.y - e.r*.5);
+      ctx.quadraticCurveTo(p.x - e.r*1.5, p.y - e.r, p.x - e.r*.4, p.y - e.r*.9);
+      ctx.moveTo(p.x + e.r, p.y - e.r*.5);
+      ctx.quadraticCurveTo(p.x + e.r*1.5, p.y - e.r, p.x + e.r*.4, p.y - e.r*.9); ctx.stroke();
+    }
+    if (e.maxShield > 0 && e.shield > 0){         // cyan shield arc
+      const frac = e.shield / e.maxShield;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = 'rgba(120,210,255,.85)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(p.x, p.y, e.r + 6, -Math.PI/2, -Math.PI/2 + TAU*frac); ctx.stroke();
+      ctx.restore();
+    }
+    if (e.heal){                                  // green healer aura
+      const pu = .5 + .5*Math.sin(time*4 + e.seed);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(120,240,150,${.25 + .25*pu})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, e.r + 5, 0, TAU); ctx.stroke();
+      ctx.fillStyle = 'rgba(150,255,180,.9)'; ctx.font = 'bold 12px system-ui';
+      ctx.textAlign = 'center'; ctx.fillText('+', p.x, p.y - e.r - 8);
+      ctx.restore();
+    }
+    if (e === focusEnemy){                         // player focus crosshair
+      ctx.save(); ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 2.4;
+      const rr = e.r + 10 + Math.sin(time*6)*1.5;
+      for (let a = 0; a < 4; a++){
+        const ang = a*Math.PI/2 + time*1.5;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rr, ang + .35, ang + Math.PI/2 - .35); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
   // projectiles
   for (const pr of projs){
     if (pr.type === 'archer'){
@@ -1468,7 +1684,41 @@ function render(){
     ctx.restore();
   }
 
+  // meteor targeting reticle (follows the cursor while aiming)
+  if (aiming === 'meteor' && mouse.in){
+    const R = 130;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const rg = ctx.createRadialGradient(mouse.x, mouse.y, 8, mouse.x, mouse.y, R);
+    rg.addColorStop(0, 'rgba(255,150,60,.28)'); rg.addColorStop(1, 'rgba(255,150,60,0)');
+    ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(mouse.x, mouse.y, R, 0, TAU); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255,180,90,.9)'; ctx.lineWidth = 2; ctx.setLineDash([8, 7]);
+    ctx.beginPath(); ctx.arc(mouse.x, mouse.y, R, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+  }
+
   ctx.restore(); // shake
+
+  // freeze / rage full-screen tints
+  if (freezeFxT > 0){ ctx.fillStyle = `rgba(150,210,255,${Math.min(.28, freezeFxT*.11)})`; ctx.fillRect(0, 0, W, H); }
+  if (rageT > 0){
+    const rv = ctx.createRadialGradient(W/2, H/2, H*.35, W/2, H/2, H*.9);
+    rv.addColorStop(0, 'rgba(255,120,40,0)'); rv.addColorStop(1, `rgba(255,90,30,${Math.min(.22, rageT*.05)})`);
+    ctx.fillStyle = rv; ctx.fillRect(0, 0, W, H);
+  }
+
+  // combo banner
+  if (combo >= 3){
+    const a = clamp(comboT / 2.6, 0, 1), pop = 1 + (1 - a) * .3;
+    ctx.save(); ctx.translate(W/2, 96); ctx.scale(pop, pop); ctx.textAlign = 'center';
+    ctx.font = '900 38px system-ui, sans-serif';
+    ctx.lineWidth = 7; ctx.strokeStyle = 'rgba(16,22,14,.8)';
+    ctx.strokeText(combo + '× COMBO', 0, 0);
+    ctx.fillStyle = combo >= 15 ? '#ff8a5e' : combo >= 10 ? '#ffd76a' : '#eef2e4';
+    ctx.fillText(combo + '× COMBO', 0, 0);
+    ctx.font = '800 15px system-ui, sans-serif'; ctx.fillStyle = '#ffe6a6';
+    ctx.fillText('gold ×' + comboMult(), 0, 22);
+    ctx.restore();
+  }
 
   // red damage vignette
   if (flashRed > 0){
@@ -1520,16 +1770,45 @@ function computeAdvice(){
   return adv;
 }
 
+// ---------- ability bar ----------
+const abilsEl = document.getElementById('abils');
+function buildAbils(){
+  abilsEl.innerHTML = '';
+  for (const k of AKEYS){
+    const a = ABIL[k];
+    const b = document.createElement('button');
+    b.className = 'abil'; b.dataset.k = k;
+    b.innerHTML = `<span class="ak">${a.hot}</span><span class="ai">${a.icon}</span><span class="an">${a.name.toUpperCase()}</span><span class="cov"></span><span class="cd"></span>`;
+    b.onclick = () => { ac(); useAbility(k); };
+    abilsEl.appendChild(b);
+  }
+}
+function updateAbils(){
+  abilsEl.style.display = (state === 'menu') ? 'none' : 'flex';
+  const active = (state === 'wave');
+  for (const b of abilsEl.children){
+    const a = ABIL[b.dataset.k];
+    const frac = a.cd > 0 ? a.cd / a.max : 0;
+    b.querySelector('.cov').style.setProperty('--deg', (frac * 360) + 'deg');
+    b.querySelector('.cd').textContent = a.cd > 0 ? Math.ceil(a.cd) : '';
+    b.classList.toggle('ready', active && a.cd <= 0);
+    b.classList.toggle('off', !active || a.cd > 0);
+    b.classList.toggle('armed', aiming === b.dataset.k);
+  }
+}
+
 // ---------- UI sync ----------
 const goldEl = document.getElementById('goldVal'), livesEl = document.getElementById('livesVal'),
-      waveEl = document.getElementById('waveVal');
+      waveEl = document.getElementById('waveVal'), scoreEl = document.getElementById('scoreVal');
 const nwEl = document.getElementById('nextWave'), nwTitle = document.getElementById('nwTitle'),
       nwHint = document.getElementById('nwHint'), nwBtn = document.getElementById('nwBtn'),
       advBtn = document.getElementById('advBtn');
-let cGold = -1, cLives = -1, cWaveTxt = '', cNW = null;
+let cGold = -1, cLives = -1, cWaveTxt = '', cNW = null, cScore = -1;
 function syncUI(){
   if (gold !== cGold){ cGold = gold; goldEl.textContent = gold; syncCards(); if (selTower) refreshPop(); }
   if (lives !== cLives){ cLives = lives; livesEl.textContent = lives; }
+  if (score !== cScore){ cScore = score; scoreEl.textContent = score; }
+  updateAbils();
   let wt;
   if (state === 'wave'){
     wt = 'WAVE ' + wave + (endless ? '' : '/' + FINAL) + ' — ' + (enemies.length + spawnQ.length) + ' LEFT';
@@ -1776,16 +2055,17 @@ genSpots();
 genDecor();
 drawBackground();
 buildCards();
+buildAbils();
 syncCards();
 showPanel(`
   <svg class="brandmark" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><linearGradient id="wkFoil" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffeeb0"/><stop offset="45%" stop-color="#f0c05a"/><stop offset="100%" stop-color="#b97b16"/></linearGradient><linearGradient id="wkDeep" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffe9a8"/><stop offset="55%" stop-color="#e9a93c"/><stop offset="100%" stop-color="#a86d12"/></linearGradient><linearGradient id="wkRing" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f7d98a"/><stop offset="100%" stop-color="#b9821f"/></linearGradient></defs><circle cx="256" cy="256" r="234" fill="none" stroke="url(#wkRing)" stroke-width="6"/><circle cx="256" cy="256" r="219" fill="none" stroke="url(#wkRing)" stroke-width="1.6" opacity=".55"/><g fill="url(#wkDeep)" opacity=".92"><circle cx="186" cy="196" r="46"/><circle cx="326" cy="196" r="46"/><circle cx="212" cy="136" r="44"/><circle cx="300" cy="136" r="44"/><circle cx="256" cy="112" r="50"/><circle cx="160" cy="238" r="30"/><circle cx="352" cy="238" r="30"/></g><g fill="url(#wkFoil)" stroke="#0a130c" stroke-width="7" stroke-linejoin="round"><path d="M208 182 L208 150 L234 150 L234 182 Z M243 182 L243 150 L269 150 L269 182 Z M278 182 L278 150 L304 150 L304 182 Z"/><path d="M214 202 L298 202 L306 390 L206 390 Z"/><path d="M198 182 L314 182 L310 204 L202 204 Z"/><path d="M196 390 L316 390 L324 408 L188 408 Z"/></g><path d="M238 408 L238 340 A18 18 0 0 1 274 340 L274 408 Z" fill="#0a130c"/><path d="M249 268 L249 240 A7 7 0 0 1 263 240 L263 268 Z" fill="#0a130c"/><g stroke="#0a130c" stroke-width="3" opacity=".5"><line x1="222" y1="244" x2="244" y2="244"/><line x1="268" y1="252" x2="290" y2="252"/><line x1="222" y1="300" x2="246" y2="300"/><line x1="266" y1="308" x2="290" y2="308"/><line x1="230" y1="352" x2="250" y2="352"/><line x1="264" y1="358" x2="284" y2="358"/></g><path d="M148 408 Q 256 432 364 408" fill="none" stroke="url(#wkRing)" stroke-width="5" stroke-linecap="round" opacity=".75"/></svg>
   <div class="title">WILDKEEP</div>
   <div class="sub">DEFENSE OF THE GROVE</div>
   <div class="tips">
-    🏹 <b>Build towers</b> beside the winding path<br>
-    ⚔️ <b>Survive ${FINAL} waves</b> pouring from the cave<br>
-    💰 <b>Earn gold</b> — upgrade to level 3, or sell &amp; adapt<br>
-    ⌨️ Hotkeys: <b>1–4</b> towers · <b>Space</b> start · <b>Esc</b> cancel
+    🏹 <b>Build towers</b> — tap a foe to <b>focus-fire</b>, set target priority<br>
+    ☄ <b>Cast spells</b> — Meteor, Freeze &amp; Rally on cooldown (<b>Q W E</b>)<br>
+    ⚔️ <b>Adapt</b> — shielded, flying, splitting &amp; healing foes await<br>
+    🔥 <b>Chain kills</b> for combo multipliers — don't let one leak!
   </div>
   <button class="btn gold big pulse" id="playBtn">▶ PLAY</button>
   <div class="social"><a class="xbtn" href="https://x.com/Wildkeepfun" target="_blank" rel="noopener" aria-label="Follow WILDKEEP on X">
