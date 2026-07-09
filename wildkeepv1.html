@@ -183,6 +183,11 @@
   .brandmark{width:clamp(76px,12vw,116px);height:auto;margin:0 auto 4px;display:block;
     filter:drop-shadow(0 6px 16px rgba(240,192,90,.28));}
   .social{margin-top:14px;display:flex;justify-content:center;}
+  .ca{margin-top:11px;font-size:clamp(10px,1.3vw,12.5px);letter-spacing:.14em;color:#9aa694;
+    font-weight:800;font-family:ui-monospace,Menlo,Consolas,monospace;
+    display:flex;align-items:center;justify-content:center;gap:7px;}
+  .ca span{color:var(--gold);background:rgba(240,192,90,.10);border:1px solid var(--line);
+    border-radius:8px;padding:3px 11px;letter-spacing:.10em;}
   .xbtn{display:inline-flex;align-items:center;gap:9px;text-decoration:none;
     color:var(--txt);background:var(--glass);border:1px solid var(--line);border-radius:12px;
     padding:9px 18px;font-weight:800;font-size:clamp(12px,1.5vw,14px);letter-spacing:.05em;
@@ -1667,8 +1672,8 @@ function render(){
     ctx.restore();
   }
 
-  // wave banner
-  if (banner.t > 0){
+  // wave banner — hidden while the idle "start wave" panel is up so they don't overlap
+  if (banner.t > 0 && !(state === 'idle' && !placing)){
     const t = banner.t / banner.max;
     const aIn = clamp((1 - t) * 6, 0, 1), aOut = clamp(t * 4, 0, 1);
     const a = Math.min(aIn, aOut);
@@ -2074,7 +2079,8 @@ showPanel(`
   <button class="btn gold big pulse" id="playBtn">▶ PLAY</button>
   <div class="social"><a class="xbtn" href="https://x.com/Wildkeepfun" target="_blank" rel="noopener" aria-label="Follow WILDKEEP on X">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-    <span>Follow on X</span></a></div>`);
+    <span>Follow on X</span></a></div>
+  <div class="ca">CA <span>COMING SOON</span></div>`);
 document.getElementById('playBtn').onclick = () => {
   ac();
   startMusic();
