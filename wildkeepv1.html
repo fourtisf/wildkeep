@@ -189,6 +189,7 @@
   .mapmeta{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;
     color:#b9c4ae;font-weight:700;letter-spacing:.05em;margin-top:1px;}
   .mapdiff{color:var(--gold);letter-spacing:1px;}
+  .mapdiff .doff{opacity:.3;}
   .mapback{margin-top:2px;background:none;border:none;color:#9aa694;font-size:12.5px;cursor:pointer;
     letter-spacing:.05em;text-decoration:underline;}
   .mapback:hover{color:#d8e2cc;}
@@ -2204,24 +2205,32 @@ document.getElementById('playBtn').onclick = () => { ac(); startMusic(); showMap
 // ---------- map select ----------
 function drawMiniMap(cvs, m){
   const c = cvs.getContext('2d'), sw = cvs.width, sh = cvs.height, sx = sw / W, sy = sh / H;
-  c.fillStyle = m.theme.grass[1]; c.fillRect(0, 0, sw, sh);
+  const gg = c.createLinearGradient(0, 0, 0, sh);
+  gg.addColorStop(0, m.theme.grass[0]); gg.addColorStop(1, m.theme.grass[2]);
+  c.fillStyle = gg; c.fillRect(0, 0, sw, sh);
   if (m.pond){
-    const wc = { lava:'#ff7a2c', ice:'#dff0fb', oasis:'#3fb0aa' }[m.theme.water] || '#3f95cc';
+    const wc = { lava:'#ff7a2c', ice:'#eaf6ff', oasis:'#3fb0aa' }[m.theme.water] || '#3f95cc';
+    c.fillStyle = 'rgba(0,0,0,.28)';
+    c.beginPath(); c.ellipse(m.pond.x*sx, m.pond.y*sy, m.pond.r*sx*.98, m.pond.r*sy*.82, 0, 0, TAU); c.fill();
     c.fillStyle = wc;
-    c.beginPath(); c.ellipse(m.pond.x*sx, m.pond.y*sy, m.pond.r*sx*.85, m.pond.r*sy*.7, 0, 0, TAU); c.fill(); }
+    c.beginPath(); c.ellipse(m.pond.x*sx, m.pond.y*sy, m.pond.r*sx*.85, m.pond.r*sy*.7, 0, 0, TAU); c.fill();
+  }
   const pts = splinePoints(m.raw);
   c.lineJoin = 'round'; c.lineCap = 'round';
   const stroke = (col, w) => { c.strokeStyle = col; c.lineWidth = w;
     c.beginPath(); c.moveTo(pts[0][0]*sx, pts[0][1]*sy);
     for (let k = 1; k < pts.length; k++) c.lineTo(pts[k][0]*sx, pts[k][1]*sy); c.stroke(); };
-  stroke(m.theme.path[1], 13*sx); stroke(m.theme.path[2], 9.5*sx); stroke(m.theme.path[3], 3.5*sx);
+  stroke('rgba(0,0,0,.45)', 18*sx);   // dark outline → path reads on any biome
+  stroke(m.theme.path[1], 13*sx);     // rim
+  stroke(m.theme.path[2], 8.5*sx);    // dirt
+  stroke(m.theme.path[3], 3.2*sx);    // worn center
 }
 function showMapSelect(){
   const cards = MAPS.map((m, i) => `
     <button class="mapcard" data-i="${i}">
-      <canvas class="mapmini" width="240" height="135"></canvas>
+      <canvas class="mapmini" width="480" height="270"></canvas>
       <div class="mapnm">${m.name}</div>
-      <div class="mapmeta"><span>${m.biome} · ${m.tag}</span><span class="mapdiff">${'★'.repeat(m.diff)}${'✩'.repeat(3-m.diff)}</span></div>
+      <div class="mapmeta"><span>${m.biome} · ${m.tag}</span><span class="mapdiff">${'★'.repeat(m.diff)}<span class="doff">${'✩'.repeat(3-m.diff)}</span></span></div>
     </button>`).join('');
   showPanel(`
     <div class="title" style="font-size:clamp(20px,3.6vw,34px);white-space:normal">CHOOSE YOUR MAP</div>
